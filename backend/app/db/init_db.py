@@ -23,6 +23,29 @@ def init_db():
     seed_users()
 
 
+EXTRA_FACILITIES = [
+    # id, name, type, address, lat, lon, capacity, occupancy, contact
+    ("FAC-FIRE-01", "Fire and Emergency Station, Koramangala (sample)", "FIRE_STATION", "Koramangala, Bengaluru", 12.9352, 77.6245, 40, 8, "101"),
+    ("FAC-POLI-01", "Police Station, Madiwala (sample)", "POLICE_STATION", "Madiwala, Bengaluru", 12.9220, 77.6170, 60, 12, "100"),
+    ("FAC-SCHO-01", "School opened as shelter, HSR Layout (sample)", "SCHOOL", "HSR Layout, Bengaluru", 12.9116, 77.6474, 300, 0, "112"),
+]
+
+
+def _seed_extra_facilities(db):
+    """Sample fire station, police station and school-shelter, labelled SIMULATED. Added once, to old databases too."""
+    from app.services.facilities import capacity_status
+
+    if db.query(Facility).filter(Facility.facility_type.in_(["FIRE_STATION", "POLICE_STATION", "SCHOOL"])).count() > 0:
+        return
+    for fid, name, ftype, address, lat, lon, cap, occ, contact in EXTRA_FACILITIES:
+        if db.query(Facility).filter(Facility.id == fid).first():
+            continue
+        db.add(Facility(id=fid, name=name, facility_type=ftype, address=address, latitude=lat, longitude=lon,
+                        total_capacity=cap, current_occupancy=occ, status=capacity_status(occ, cap),
+                        contact=contact, data_label="SIMULATED"))
+    db.commit()
+
+
 def _init_core():
     print("[init_db] Creating all database tables...")
     Base.metadata.create_all(bind=engine)
@@ -40,6 +63,8 @@ def _init_core():
             )
             db.commit()
             print(f"[init_db] Seeded {len(BENGALURU_HOTSPOTS)} simulated LoRa beacons at Bengaluru hotspots")
+
+        _seed_extra_facilities(db)
 
         # Check if already seeded
         if db.query(RescueTeam).count() > 0:

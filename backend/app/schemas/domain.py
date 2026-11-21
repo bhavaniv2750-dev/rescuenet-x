@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ================= Incidents =================
 _DEPTH_PATTERN = "(?i)^(ANKLE|KNEE|WAIST|CHEST_OR_DEEPER|UNKNOWN)$"
@@ -174,6 +174,8 @@ class VolunteerOut(BaseModel):
     area: str
     is_verified: bool
     status: str
+    assigned_incident_id: Optional[str] = None
+    verified_by: Optional[str] = None
     registered_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -210,13 +212,28 @@ class AlertOut(BaseModel):
 # ================= Facilities =================
 class FacilityCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
-    facility_type: str = Field(min_length=2, max_length=50)
+    facility_type: str = Field(
+        pattern="(?i)^(HOSPITAL|SHELTER|RELIEF_CAMP|RESCUE_HQ|POLICE_STATION|FIRE_STATION|SCHOOL)$",
+        description="HOSPITAL, SHELTER, RELIEF_CAMP, RESCUE_HQ, POLICE_STATION, FIRE_STATION or SCHOOL (a school set up as a shelter)",
+    )
     address: str = Field(min_length=2, max_length=200)
     latitude: float
     longitude: float
     total_capacity: int = Field(default=100, ge=1)
     current_occupancy: int = Field(default=0, ge=0)
     contact: str
+
+    @model_validator(mode="after")
+    def _occupancy_fits(self):
+        if self.current_occupancy > self.total_capacity:
+            raise ValueError("current_occupancy cannot be more than total_capacity")
+        return self
+
+
+class FacilityOccupancyUpdate(BaseModel):
+    current_occupancy: int = Field(ge=0)
+    total_capacity: Optional[int] = Field(default=None, ge=1)
+
 
 class FacilityOut(BaseModel):
     id: str
@@ -229,6 +246,7 @@ class FacilityOut(BaseModel):
     current_occupancy: int
     status: str
     contact: str
+    data_label: Optional[str] = "SIMULATED"
     distance_km: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)

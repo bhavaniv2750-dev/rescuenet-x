@@ -28,6 +28,7 @@ from app.core.security import (
 from app.db.session import get_db
 from app.models.entities import AuditLog, RescueTeam, User, Volunteer
 from app.services.audit import record_audit
+from app.services.ids import next_volunteer_id
 
 router = APIRouter()
 
@@ -197,9 +198,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if payload.role == "VOLUNTEER":
         if not payload.skills or not payload.area:
             raise HTTPException(status_code=422, detail="Volunteers must give their skills and area")
-        volunteer_id = f"VOL-{db.query(Volunteer).count() + 101}"
-        while db.query(Volunteer).filter(Volunteer.id == volunteer_id).first():
-            volunteer_id = f"VOL-{int(volunteer_id.split('-')[1]) + 1}"
+        volunteer_id = next_volunteer_id(db)
         db.add(Volunteer(id=volunteer_id, name=payload.full_name, phone=payload.phone, email=email or "",
                          skills=payload.skills, area=payload.area, is_verified=False, status="STANDBY"))
 

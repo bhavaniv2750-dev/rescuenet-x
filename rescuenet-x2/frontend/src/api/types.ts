@@ -59,6 +59,8 @@ export interface Volunteer {
   area: string;
   is_verified: boolean;
   status: 'AVAILABLE' | 'ASSIGNED' | 'STANDBY';
+  assigned_incident_id?: string | null;
+  verified_by?: string | null;
   registered_at: string;
 }
 
@@ -81,7 +83,7 @@ export interface Alert {
 export interface Facility {
   id: string;
   name: string;
-  facility_type: 'HOSPITAL' | 'SHELTER' | 'RELIEF_CAMP' | 'RESCUE_HQ';
+  facility_type: 'HOSPITAL' | 'SHELTER' | 'RELIEF_CAMP' | 'RESCUE_HQ' | 'POLICE_STATION' | 'FIRE_STATION' | 'SCHOOL';
   address: string;
   latitude: number;
   longitude: number;
@@ -89,6 +91,7 @@ export interface Facility {
   current_occupancy: number;
   status: 'OPERATIONAL' | 'NEAR_CAPACITY' | 'FULL';
   contact: string;
+  data_label?: string;
   distance_km?: number;
 }
 

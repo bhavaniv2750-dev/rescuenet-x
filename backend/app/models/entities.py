@@ -105,6 +105,8 @@ class Volunteer(Base):
     area = Column(String(100), nullable=False)
     is_verified = Column(Boolean, nullable=False, default=False)
     status = Column(String(30), nullable=False, default="AVAILABLE")  # AVAILABLE, ASSIGNED, STANDBY
+    assigned_incident_id = Column(String(50), nullable=True, index=True)
+    verified_by = Column(String(100), nullable=True)
     registered_at = Column(DateTime, default=utc_now)
 
 
@@ -131,7 +133,7 @@ class Facility(Base):
 
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(120), nullable=False)
-    facility_type = Column(String(50), nullable=False)  # HOSPITAL, SHELTER, RELIEF_CAMP, RESCUE_HQ
+    facility_type = Column(String(50), nullable=False)  # see app.services.facilities.FACILITY_TYPES
     address = Column(String(200), nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
@@ -139,6 +141,8 @@ class Facility(Base):
     current_occupancy = Column(Integer, nullable=False, default=0)
     status = Column(String(30), nullable=False, default="OPERATIONAL")  # OPERATIONAL, NEAR_CAPACITY, FULL
     contact = Column(String(50), nullable=False)
+    # OBSERVED (entered by staff), SIMULATED (sample data shipped with the project)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
 
 
 class RescueRecord(Base):

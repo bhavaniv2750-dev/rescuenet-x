@@ -241,6 +241,14 @@ export const api = {
   registerVolunteer: (payload: { name: string; phone: string; email: string; skills: string; area: string }) =>
     request<Volunteer>('/volunteers/', { method: 'POST', body: JSON.stringify(payload) }),
 
+  assignVolunteer: (volunteerId: string, incidentId: string) =>
+    request<Volunteer>(`/volunteers/${volunteerId}/assign`, { method: 'POST', body: JSON.stringify({ incident_id: incidentId }) }),
+
+  releaseVolunteer: (volunteerId: string) => request<Volunteer>(`/volunteers/${volunteerId}/release`, { method: 'POST' }),
+
+  updateFacilityOccupancy: (facilityId: string, current_occupancy: number) =>
+    request<Facility>(`/facilities/${facilityId}/occupancy`, { method: 'PATCH', body: JSON.stringify({ current_occupancy }) }),
+
   updateVolunteer: (volunteerId: string, payload: { is_verified?: boolean; status?: string }) =>
     request<Volunteer>(`/volunteers/${volunteerId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 

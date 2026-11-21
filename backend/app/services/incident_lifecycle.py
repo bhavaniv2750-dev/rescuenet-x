@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.entities import Incident
+from app.models.entities import Incident, Volunteer
 from app.services.audit import record_audit
 
 STATES: List[str] = [
@@ -88,6 +88,11 @@ def transition(
             detail=f"Transition {current} -> {target} is not allowed. Allowed: {', '.join(TRANSITIONS.get(current, [])) or 'none (terminal state)'}",
         )
     incident.status = target
+    if target in TERMINAL_STATES:
+        # Volunteers on a finished incident become available again.
+        for vol in db.query(Volunteer).filter(Volunteer.assigned_incident_id == incident.id).all():
+            vol.assigned_incident_id = None
+            vol.status = "AVAILABLE"
     if target == "VERIFIED":
         incident.verified_by = actor
     record_audit(

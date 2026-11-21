@@ -261,3 +261,6 @@ button:disabled, .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .panel > .filter-bar { padding: 12px 16px; }
+
+.occupancy-edit { display: flex; gap: 6px; align-items: center; margin: 8px 0 4px; }
+.occupancy-edit input { width: 90px; background: var(--surface-1); color: var(--text-main); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 13px; }

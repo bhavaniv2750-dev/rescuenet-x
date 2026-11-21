@@ -2,11 +2,14 @@ import math
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from app.api.deps import actor_name, require_roles
+from fastapi import HTTPException
+from app.api.deps import actor_name, actor_role, require_roles
 from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
-from app.models.entities import Facility
-from app.schemas.domain import FacilityCreate, FacilityOut
+from app.models.entities import Facility, User
+from app.services.audit import record_audit
+from app.services.facilities import capacity_status
+from app.schemas.domain import FacilityCreate, FacilityOccupancyUpdate, FacilityOut
 
 router = APIRouter()
 
@@ -57,9 +60,13 @@ def list_facilities(
     }
 
 @router.post("/", response_model=FacilityOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
-def create_facility(payload: FacilityCreate, db: Session = Depends(get_db)):
-    count = db.query(Facility).count()
-    new_id = f"FAC-{payload.facility_type[:4].upper()}-{count + 1:02d}"
+def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*OPS))):
+    prefix = payload.facility_type.upper().split("_")[0][:5]
+    number = db.query(Facility).count() + 1
+    new_id = f"FAC-{prefix}-{number:02d}"
+    while db.query(Facility).filter(Facility.id == new_id).first():
+        number += 1
+        new_id = f"FAC-{prefix}-{number:02d}"
 
     facility = Facility(
         id=new_id,
@@ -70,10 +77,32 @@ def create_facility(payload: FacilityCreate, db: Session = Depends(get_db)):
         longitude=payload.longitude,
         total_capacity=payload.total_capacity,
         current_occupancy=payload.current_occupancy,
-        status="OPERATIONAL",
+        status=capacity_status(payload.current_occupancy, payload.total_capacity),
         contact=payload.contact,
+        data_label="OBSERVED",
     )
     db.add(facility)
+    record_audit(db, actor_name(user), "FACILITY_CREATED", "facility", new_id, f"{payload.facility_type.upper()} {payload.name}", role=actor_role(user))
+    db.commit()
+    db.refresh(facility)
+    return FacilityOut.model_validate(facility)
+
+
+@router.patch("/{facility_id}/occupancy", response_model=FacilityOut)
+def update_occupancy(facility_id: str, payload: FacilityOccupancyUpdate, db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(*OPS))):
+    """Update how many people a facility holds; the status follows from the numbers."""
+    facility = db.query(Facility).filter(Facility.id == facility_id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail=f"Facility {facility_id} not found")
+    capacity = payload.total_capacity or facility.total_capacity
+    if payload.current_occupancy > capacity:
+        raise HTTPException(status_code=422, detail="current_occupancy cannot be more than total_capacity")
+    facility.total_capacity = capacity
+    facility.current_occupancy = payload.current_occupancy
+    facility.status = capacity_status(payload.current_occupancy, capacity)
+    record_audit(db, actor_name(user), "FACILITY_OCCUPANCY", "facility", facility.id,
+                 f"{payload.current_occupancy}/{capacity} ({facility.status})", role=actor_role(user))
     db.commit()
     db.refresh(facility)
     return FacilityOut.model_validate(facility)

@@ -222,9 +222,9 @@ function Shell() {
           {activePage === 'My Missions' && <MyWorkView variant="missions" teamName={user?.team_id} />}
           {activePage === 'My Reports' && <MyWorkView variant="reports" />}
 
-          {activePage === 'Volunteer Coordination' && <VolunteersView volunteers={volunteers} onRefresh={loadAllData} />}
+          {activePage === 'Volunteer Coordination' && <VolunteersView volunteers={volunteers} incidents={incidents} onRefresh={loadAllData} />}
 
-          {activePage === 'Facilities & Shelters' && <FacilitiesView facilities={facilities} onRefresh={loadAllData} />}
+          {activePage === 'Facilities & Shelters' && <FacilitiesView facilities={facilities} onRefresh={loadAllData} canManage={staff} />}
 
           {(activePage === 'Incident Reports' || activePage === 'Report Emergency') && (
             <IncidentReportView intakeOnly={intakeOnly || activePage === 'Report Emergency'} onSuccess={afterReport} />
