@@ -3,8 +3,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
+from app.db.beacon_registry import BENGALURU_HOTSPOTS
+from app.db.migrate import upgrade_schema
 from app.models.entities import (
     Alert,
+    Beacon,
     DatasetRegistry,
     Facility,
     Incident,
@@ -17,9 +20,21 @@ from app.models.entities import (
 def init_db():
     print("[init_db] Creating all database tables...")
     Base.metadata.create_all(bind=engine)
+    added = upgrade_schema(engine)
+    if added:
+        print(f"[init_db] Added missing columns: {', '.join(added)}")
 
     db = SessionLocal()
     try:
+        # The beacon registry is seeded separately so older databases get it too.
+        if db.query(Beacon).count() == 0:
+            db.add_all(
+                Beacon(beacon_id=bid, hotspot=name, latitude=lat, longitude=lon, data_label="SIMULATED")
+                for bid, name, lat, lon in BENGALURU_HOTSPOTS
+            )
+            db.commit()
+            print(f"[init_db] Seeded {len(BENGALURU_HOTSPOTS)} simulated LoRa beacons at Bengaluru hotspots")
+
         # Check if already seeded
         if db.query(RescueTeam).count() > 0:
             print("[init_db] Database already contains records. Skipping initial seed.")
@@ -212,7 +227,7 @@ def init_db():
                 skills="Shelter Logistics, Water Purification, Translation",
                 area="Shivajinagar, Bengaluru",
                 is_verified=True,
-                status="ASSIGNED",
+                status="DISPATCHED",
             ),
             Volunteer(
                 id="VOL-105",
@@ -238,8 +253,9 @@ def init_db():
                 longitude=77.6980,
                 severity="CRITICAL",
                 people_affected=12,
-                status="ASSIGNED",
+                status="DISPATCHED",
                 source="CITIZEN_REPORT",
+                data_label="SIMULATED",
                 assigned_team_id="TEAM-KSFES-07",
             ),
             Incident(
@@ -251,8 +267,9 @@ def init_db():
                 longitude=77.6784,
                 severity="HIGH",
                 people_affected=8,
-                status="IN_PROGRESS",
+                status="ON_SCENE",
                 source="CITIZEN_REPORT",
+                data_label="SIMULATED",
                 assigned_team_id="TEAM-SDRF-02",
             ),
             Incident(
@@ -266,6 +283,7 @@ def init_db():
                 people_affected=5,
                 status="VERIFIED",
                 source="CITIZEN_REPORT",
+                data_label="SIMULATED",
             ),
             Incident(
                 id="INC-1039",
@@ -278,6 +296,7 @@ def init_db():
                 people_affected=3,
                 status="REPORTED",
                 source="CITIZEN_REPORT",
+                data_label="SIMULATED",
             ),
             Incident(
                 id="INC-1038",
@@ -290,50 +309,41 @@ def init_db():
                 people_affected=14,
                 status="REPORTED",
                 source="CITIZEN_REPORT",
+                data_label="SIMULATED",
             ),
         ]
         db.add_all(initial_bengaluru_incidents)
 
-        # Ingest Real SOS Incidents from clean_rescuenet_sos_data.csv
-        sos_path = settings.CLEAN_DATASET_DIR / "clean_rescuenet_sos_data.csv"
-        if sos_path.exists():
-            print(f"[init_db] Ingesting real SOS incidents from {sos_path}...")
-            with open(sos_path, mode="r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                count = 0
-                for row in reader:
-                    if count >= 35:  # Ingest first 35 real SOS incidents into persistent DB
-                        break
-                    try:
-                        lat = float(row.get("latitude", 0))
-                        lon = float(row.get("longitude", 0))
-                        trapped = int(row.get("trapped_count", 1))
-                        batt = int(float(row.get("device_battery_pct", 75)))
-                        hops = int(float(row.get("mesh_hop_count", 1)))
-                        sos_id = row.get("sos_id", f"SOS-{2000+count}")
-                        sev = row.get("severity_level", "HIGH").upper()
-                        if sev not in ["CRITICAL", "HIGH", "MODERATE", "LOW"]:
-                            sev = "HIGH"
+        # Simulated LoRa SOS incidents from the Bengaluru beacon registry.
+        # (clean_rescuenet_sos_data.csv has Mumbai coordinates, so it is not used for the map.)
+        import random
 
-                        inc = Incident(
-                            id=sos_id,
-                            title=f"RescueNet LoRa Mesh SOS Alert #{sos_id}",
-                            description=f"Automated mesh beacon relay. Trapped persons: {trapped}. Device Battery: {batt}%. Mesh Hop Distance: {hops}.",
-                            area=f"Disaster Grid Lat {lat:.3f}, Lon {lon:.3f}",
-                            latitude=lat,
-                            longitude=lon,
-                            severity=sev,
-                            people_affected=trapped,
-                            status="REPORTED",
-                            source="MESH_SOS",
-                            device_battery_pct=batt,
-                            mesh_hops=hops,
-                        )
-                        db.add(inc)
-                        count += 1
-                    except Exception as e:
-                        continue
-            print(f"[init_db] Successfully ingested {count} real SOS incidents!")
+        rng = random.Random(2026)
+        severities = ["CRITICAL", "HIGH", "MODERATE"]
+        for bid, name, lat, lon in BENGALURU_HOTSPOTS[:12]:
+            trapped = rng.randint(1, 9)
+            batt = rng.randint(18, 96)
+            hops = rng.randint(1, 5)
+            db.add(
+                Incident(
+                    id=f"INC-LORA-{bid}",
+                    title=f"LoRa Mesh SOS from beacon {bid} ({name})",
+                    description=f"Mesh beacon relay. Trapped persons: {trapped}. Device battery: {batt}%. Mesh hop distance: {hops}.",
+                    area=f"{name}, Bengaluru",
+                    latitude=lat,
+                    longitude=lon,
+                    severity=rng.choice(severities),
+                    people_affected=trapped,
+                    status="REPORTED",
+                    source="MESH_SOS",
+                    device_battery_pct=batt,
+                    mesh_hops=hops,
+                    beacon_id=bid,
+                    location_method="GPS",
+                    data_label="SIMULATED",
+                )
+            )
+        print("[init_db] Seeded 12 simulated LoRa SOS incidents")
 
         print("[init_db] Seeding Geo-Targeted Alerts...")
         alerts = [
@@ -456,8 +466,8 @@ def init_db():
                 category="CLEAN_SOS",
                 records_count=250,
                 status="INGESTED",
-                coverage="Disaster Mesh Geocoordinates (Trapped Count, Battery, Hops)",
-                description="Real multi-hop decentralized emergency SOS distress beacons.",
+                coverage="External sample: Mumbai coordinates (latitude 19.0 to 19.1, longitude 72.8 to 72.9)",
+                description="Sample multi-hop SOS records (trapped count, battery, hops). Their coordinates are outside Karnataka, so they are kept for reference only; the Bengaluru map uses the simulated 35-beacon registry.",
             ),
             DatasetRegistry(
                 id="DATA-03",

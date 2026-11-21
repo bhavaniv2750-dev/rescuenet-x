@@ -4,6 +4,9 @@ from sqlalchemy import case, func
 from app.db.session import get_db
 from app.ml.flood_model import flood_ml_service
 from app.models.entities import Alert, Facility, Incident, RescueRecord, RescueTeam, Volunteer
+from app.services.incident_lifecycle import TERMINAL_STATES
+
+CLOSED_STATES = sorted(TERMINAL_STATES)
 
 router = APIRouter()
 
@@ -11,10 +14,10 @@ router = APIRouter()
 def get_dashboard(db: Session = Depends(get_db)):
     # Incident stats
     total_incidents = db.query(Incident).count()
-    active_incidents = db.query(Incident).filter(Incident.status != "RESOLVED").count()
+    active_incidents = db.query(Incident).filter(Incident.status.notin_(CLOSED_STATES)).count()
     critical_incidents = db.query(Incident).filter(
         Incident.severity.in_(["CRITICAL", "critical"]),
-        Incident.status != "RESOLVED"
+        Incident.status.notin_(CLOSED_STATES)
     ).count()
     people_affected = db.query(func.sum(Incident.people_affected)).scalar() or 0
 
@@ -41,7 +44,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     # Priority Incidents (top 5 active)
     priority_incidents = (
         db.query(Incident)
-        .filter(Incident.status != "RESOLVED")
+        .filter(Incident.status.notin_(CLOSED_STATES))
         .order_by(
             case(
                 (Incident.severity.in_(["CRITICAL", "critical"]), 1),

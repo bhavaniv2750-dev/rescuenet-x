@@ -91,6 +91,18 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
     }
   };
 
+  const handleDecline = async (taskId: string) => {
+    const note = window.prompt('Reason for declining this plan (recorded in the audit log):') || undefined;
+    try {
+      const updated = await api.declineSupervisorTask(taskId, note);
+      setLatestTask(updated);
+      setExecState('completed');
+      await fetchTasksAndAgents();
+    } catch (err: any) {
+      alert(`Decline failed: ${err.message}`);
+    }
+  };
+
   const handleApprove = async (taskId: string) => {
     try {
       const updated = await api.approveSupervisorTask(taskId);
@@ -106,10 +118,11 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
     <div className="supervisor-container">
       <div className="view-header">
         <div>
-          <h2>AI Supervisor & Autonomous Multi-Agent Orchestration</h2>
+          <h2>AI Supervisor & Multi-Agent Orchestration</h2>
           <p>
             Local-first LLM reasoning (Ollama Qwen 4B Instruct) orchestrating specialized telemetry,
-            geospatial intelligence, squad routing, and medical logistics under strict commander authorization.
+            geospatial intelligence, squad routing, and medical logistics. The model only advises: a deterministic rule
+            (five or more victims, or HIGH/CRITICAL severity) forces commander approval before dispatch.
           </p>
         </div>
       </div>
@@ -340,7 +353,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                 <span className="font-mono text-cyan font-bold">{latestTask.task_type}</span>
                 <span
                   className={`status-pill ${
-                    latestTask.status === 'COMPLETED' ? 'pill-active' : 'pill-critical'
+                    ['COMPLETED', 'APPROVED'].includes(latestTask.status) ? 'pill-active' : latestTask.status === 'DECLINED' ? 'pill-muted' : 'pill-critical'
                   }`}
                 >
                   {latestTask.status}
@@ -374,12 +387,25 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                       </p>
                     </div>
                   </div>
-                  <button
-                    className="btn-primary btn-block"
-                    onClick={() => handleApprove(latestTask.id)}
-                  >
-                    <ShieldCheck size={16} /> Authorize Squad Dispatch & Issue Geotargeted Warning
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      className="btn-primary btn-block"
+                      onClick={() => handleApprove(latestTask.id)}
+                    >
+                      <ShieldCheck size={16} /> Approve & Dispatch
+                      {latestTask.suggested_team_id ? ` ${latestTask.suggested_team_id}` : ''}
+                    </button>
+                    <button className="btn-secondary btn-block" onClick={() => handleDecline(latestTask.id)}>
+                      Decline Plan
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {latestTask.status === 'DECLINED' && (
+                <div className="approved-dossier-note">
+                  ✕ Plan declined by the commander{latestTask.decision_note ? `: ${latestTask.decision_note}` : ''}.
+                  {latestTask.incident_id ? ` Incident ${latestTask.incident_id} moved to REJECTED and can be re-queued.` : ''}
                 </div>
               )}
 
@@ -438,7 +464,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                   <td>
                     <span
                       className={`status-pill ${
-                        t.status === 'COMPLETED' ? 'pill-active' : 'pill-critical'
+                        ['COMPLETED', 'APPROVED'].includes(t.status) ? 'pill-active' : t.status === 'DECLINED' ? 'pill-muted' : 'pill-critical'
                       }`}
                     >
                       {t.status}

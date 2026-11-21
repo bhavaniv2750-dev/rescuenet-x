@@ -100,6 +100,17 @@ export const api = {
   updateIncident: (id: string, payload: { status?: string; assigned_team_id?: string; severity?: string; image_url?: string | null }) =>
     request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 
+  changeIncidentState: (id: string, toStatus: string, extra: { actor?: string; note?: string; duplicate_of?: string } = {}) =>
+    request<Incident>(`/incidents/${id}/state`, { method: 'POST', body: JSON.stringify({ to_status: toStatus, ...extra }) }),
+
+  getIncidentHistory: (id: string) =>
+    request<{ items: import('./types').AuditEntry[]; count: number }>(`/incidents/${id}/history`),
+
+  getIncidentLifecycle: () =>
+    request<{ states: string[]; transitions: Record<string, string[]>; terminal_states: string[] }>('/incidents/lifecycle'),
+
+  getBeacons: () => request<{ items: import('./types').Beacon[]; count: number }>('/incidents/beacons'),
+
   deleteIncident: (id: string) => request<{ message: string }>(`/incidents/${id}`, { method: 'DELETE' }),
 
   getRecordsCSVUrl: () => `${API_BASE_URL}/records/export/csv`,
@@ -194,8 +205,11 @@ export const api = {
   executeSupervisorTriage: (payload: { task_type: string; incident_id?: string; area?: string; instruction?: string }) =>
     request<SupervisorTask>('/agents/supervisor/triage', { method: 'POST', body: JSON.stringify(payload) }),
 
-  approveSupervisorTask: (taskId: string) =>
-    request<SupervisorTask>(`/agents/tasks/${taskId}/approve`, { method: 'POST' }),
+  approveSupervisorTask: (taskId: string, note?: string) =>
+    request<SupervisorTask>(`/agents/tasks/${taskId}/approve`, { method: 'POST', body: JSON.stringify({ note }) }),
+
+  declineSupervisorTask: (taskId: string, note?: string) =>
+    request<SupervisorTask>(`/agents/tasks/${taskId}/decline`, { method: 'POST', body: JSON.stringify({ note }) }),
 
   // Datasets & Models
   getDatasets: () => request<{ count: number; items: DatasetItem[]; storage_root: string; total_records_ingested: number; flood_images_verified: number; flood_images_unique?: number; duplicate_images_count?: number }>('/datasets/inventory'),

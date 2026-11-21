@@ -24,7 +24,7 @@ class Incident(Base):
     longitude = Column(Float, nullable=False)
     severity = Column(String(20), nullable=False, default="HIGH")  # CRITICAL, HIGH, MODERATE, LOW
     people_affected = Column(Integer, nullable=False, default=1)
-    status = Column(String(30), nullable=False, default="REPORTED")  # REPORTED, VERIFIED, ASSIGNED, IN_PROGRESS, RESOLVED
+    status = Column(String(30), nullable=False, default="REPORTED")  # see app.services.incident_lifecycle.STATES
     source = Column(String(50), nullable=False, default="CITIZEN_REPORT")  # CITIZEN_REPORT, MESH_SOS, SENSOR_TELEMETRY, OPERATOR
     device_battery_pct = Column(Integer, nullable=True)
     mesh_hops = Column(Integer, nullable=True)
@@ -33,8 +33,44 @@ class Incident(Base):
     reporter_name = Column(String(100), nullable=True)
     reporter_contact = Column(String(50), nullable=True)
     incident_type = Column(String(50), nullable=True, default="FLOODING")
+    # OBSERVED (real report), PREDICTED (model output) or SIMULATED (demo/test data)
+    data_label = Column(String(20), nullable=False, default="OBSERVED")
+    beacon_id = Column(String(50), nullable=True, index=True)
+    location_method = Column(String(20), nullable=True)  # GPS, TRILATERATION, MANUAL
+    verified_by = Column(String(100), nullable=True)
+    duplicate_of = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class Beacon(Base):
+    """Registry of LoRa distress beacons."""
+
+    __tablename__ = "beacons"
+
+    beacon_id = Column(String(50), primary_key=True, index=True)
+    hotspot = Column(String(120), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    last_battery_pct = Column(Integer, nullable=True)
+    last_hops = Column(Integer, nullable=True)
+    last_seen = Column(DateTime, nullable=True)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
+
+
+class AuditLog(Base):
+    """Append-only record of consequential actions."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    actor = Column(String(100), nullable=False, default="system")
+    role = Column(String(30), nullable=False, default="SYSTEM")
+    action = Column(String(60), nullable=False, index=True)
+    target_type = Column(String(40), nullable=False)
+    target_id = Column(String(60), nullable=False, index=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now, index=True)
 
 
 class RescueTeam(Base):
@@ -130,6 +166,10 @@ class SupervisorTask(Base):
     recommendations = Column(Text, nullable=False)
     requires_human_approval = Column(Boolean, nullable=False, default=False)
     approved_by = Column(String(100), nullable=True)
+    incident_id = Column(String(50), nullable=True, index=True)
+    suggested_team_id = Column(String(50), nullable=True)
+    suggested_facility_id = Column(String(50), nullable=True)
+    decision_note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

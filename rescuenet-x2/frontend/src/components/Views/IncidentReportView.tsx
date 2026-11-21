@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import type { Incident } from '../../api/types';
+import { actionsFor, humanStatus, statusPillClass } from '../../lib/lifecycle';
 import {
   AlertTriangle,
   Camera,
@@ -182,7 +183,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
   const handleStatusUpdate = async (incidentId: string, newStatus: string) => {
     try {
-      const updated = await api.updateIncident(incidentId, { status: newStatus });
+      const updated = await api.changeIncidentState(incidentId, newStatus, { actor: 'operator' });
       setSelectedIncident(updated);
       setIncidents((prev) => prev.map((inc) => (inc.id === incidentId ? updated : inc)));
       onSuccess();
@@ -517,14 +518,14 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
               {/* Status Filter */}
               <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {['ALL', 'REPORTED', 'VERIFIED', 'ASSIGNED', 'RESOLVED'].map((st) => (
+                {['ALL', 'REPORTED', 'UNDER_VERIFICATION', 'VERIFIED', 'PENDING_APPROVAL', 'DISPATCHED', 'ON_SCENE', 'RESOLVED'].map((st) => (
                   <button
                     key={st}
                     className={`status-pill ${statusFilter === st ? 'pill-active' : ''}`}
                     style={{ cursor: 'pointer', fontSize: '11px', padding: '2px 8px' }}
                     onClick={() => setStatusFilter(st)}
                   >
-                    {st}
+                    {humanStatus(st)}
                   </button>
                 ))}
               </div>
@@ -562,18 +563,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                           {inc.id}
                         </span>
                         <span
-                          className={`status-pill ${
-                            inc.status === 'REPORTED'
-                              ? 'pill-amber'
-                              : inc.status === 'VERIFIED'
-                              ? 'pill-cyan'
-                              : inc.status === 'RESOLVED'
-                              ? 'pill-muted'
-                              : 'pill-active'
-                          }`}
+                          className={`status-pill ${statusPillClass(inc.status)}`}
                           style={{ fontSize: '10px' }}
                         >
-                          {inc.status}
+                          {humanStatus(inc.status)}
                         </span>
                       </div>
 
@@ -611,17 +604,9 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         {selectedIncident.id}
                       </span>
                       <span
-                        className={`status-pill ${
-                          selectedIncident.status === 'REPORTED'
-                            ? 'pill-amber'
-                            : selectedIncident.status === 'VERIFIED'
-                            ? 'pill-cyan'
-                            : selectedIncident.status === 'RESOLVED'
-                            ? 'pill-muted'
-                            : 'pill-active'
-                        }`}
+                        className={`status-pill ${statusPillClass(selectedIncident.status)}`}
                       >
-                        {selectedIncident.status}
+                        {humanStatus(selectedIncident.status)}
                       </span>
                       <span
                         className="status-pill"
@@ -640,24 +625,18 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
                   {/* Status Actions */}
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {selectedIncident.status === 'REPORTED' && (
-                      <button
-                        className="btn-primary"
-                        style={{ fontSize: '12px' }}
-                        onClick={() => handleStatusUpdate(selectedIncident.id, 'VERIFIED')}
-                      >
-                        <ShieldCheck size={14} /> Verify Incident
-                      </button>
-                    )}
-                    {selectedIncident.status !== 'RESOLVED' && (
-                      <button
-                        className="btn-secondary"
-                        style={{ fontSize: '12px', color: '#10b981', borderColor: '#10b981' }}
-                        onClick={() => handleStatusUpdate(selectedIncident.id, 'RESOLVED')}
-                      >
-                        Mark Resolved
-                      </button>
-                    )}
+                    {actionsFor(selectedIncident)
+                      .filter((a) => a.kind === 'state' && a.to)
+                      .map((a) => (
+                        <button
+                          key={a.label}
+                          className={a.to === 'VERIFIED' ? 'btn-primary' : 'btn-secondary'}
+                          style={{ fontSize: '12px' }}
+                          onClick={() => handleStatusUpdate(selectedIncident.id, a.to as string)}
+                        >
+                          {a.to === 'VERIFIED' && <ShieldCheck size={14} />} {a.label}
+                        </button>
+                      ))}
                   </div>
                 </div>
 

@@ -9,8 +9,22 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.entities import Incident
-from app.schemas.domain import IncidentCreate, IncidentOut, IncidentStatusUpdate
+from datetime import datetime, timedelta, timezone
+
+from app.db.beacon_registry import KARNATAKA_BOUNDS, inside_karnataka
+from app.models.entities import AuditLog, Beacon, Incident
+from app.schemas.domain import (
+    AuditOut,
+    BeaconOut,
+    IncidentCreate,
+    IncidentOut,
+    IncidentStateChange,
+    IncidentStatusUpdate,
+    LoRaPacket,
+)
+from app.services import incident_lifecycle as lifecycle
+from app.services.audit import record_audit
+from app.services.trilateration import rssi_to_distance_m, trilaterate
 
 router = APIRouter()
 
@@ -65,6 +79,151 @@ def get_incident_image(filename: str):
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Incident attachment image not found")
     return FileResponse(file_path)
+
+def raise_if_dispatch_blocked(inc: Incident, target: str) -> None:
+    """Dispatch of a gated incident is only possible through POST /agents/tasks/{id}/approve."""
+    if target != "DISPATCHED":
+        return
+    if lifecycle.normalize(inc.status) == "PENDING_APPROVAL":
+        raise HTTPException(status_code=409, detail="Incident is waiting for commander approval; approve its supervisor task to dispatch it.")
+    if lifecycle.requires_commander_approval(inc.people_affected, inc.severity):
+        raise HTTPException(
+            status_code=409,
+            detail="This incident meets the approval rule (five or more victims, or HIGH or CRITICAL severity). Run supervisor triage and get commander approval before dispatch.",
+        )
+
+
+@router.get("/lifecycle")
+def get_lifecycle():
+    """States and allowed transitions of the incident lifecycle."""
+    return {
+        "states": lifecycle.STATES,
+        "transitions": lifecycle.TRANSITIONS,
+        "terminal_states": sorted(lifecycle.TERMINAL_STATES),
+        "legacy_aliases": lifecycle.LEGACY_ALIASES,
+    }
+
+
+@router.get("/beacons", response_model=dict)
+def list_beacons(db: Session = Depends(get_db)):
+    beacons = db.query(Beacon).order_by(Beacon.beacon_id).all()
+    return {
+        "items": [BeaconOut.model_validate(b) for b in beacons],
+        "count": len(beacons),
+        "operating_bounds": KARNATAKA_BOUNDS,
+    }
+
+
+@router.post("/lora", status_code=status.HTTP_201_CREATED)
+def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db)):
+    """Turn a LoRa distress packet into an incident (or refresh the open one for that beacon)."""
+    rms = None
+    if packet.latitude is not None and packet.longitude is not None:
+        lat, lon, method = packet.latitude, packet.longitude, "GPS"
+    elif len(packet.gateway_readings) >= 3:
+        try:
+            lat, lon, rms = trilaterate(
+                [(g.latitude, g.longitude, rssi_to_distance_m(g.rssi_dbm)) for g in packet.gateway_readings]
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        method = "TRILATERATION"
+    else:
+        raise HTTPException(status_code=422, detail="Packet has no GPS fix and fewer than three gateway readings")
+
+    if not inside_karnataka(lat, lon):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Position {lat:.4f}, {lon:.4f} is outside the Karnataka operating area {KARNATAKA_BOUNDS}",
+        )
+
+    label = "SIMULATED" if packet.is_simulated else "OBSERVED"
+    now = datetime.now(timezone.utc)
+    beacon = db.query(Beacon).filter(Beacon.beacon_id == packet.beacon_id).first()
+    if beacon is None:
+        beacon = Beacon(beacon_id=packet.beacon_id, hotspot=packet.area or "Unregistered beacon", latitude=lat, longitude=lon, data_label=label)
+        db.add(beacon)
+    beacon.last_battery_pct = packet.battery_pct
+    beacon.last_hops = packet.hop_count
+    beacon.last_seen = now
+
+    # One open incident per beacon: repeated packets refresh it instead of creating duplicates.
+    open_inc = (
+        db.query(Incident)
+        .filter(Incident.beacon_id == packet.beacon_id, Incident.status.notin_(list(lifecycle.TERMINAL_STATES)))
+        .order_by(Incident.created_at.desc())
+        .first()
+    )
+    severity = packet.emergency_level.upper()
+    description = (
+        f"LoRa mesh distress packet. Trapped persons: {packet.casualty_estimate}. "
+        f"Device battery: {packet.battery_pct}%. Mesh hop distance: {packet.hop_count}. Location: {method}"
+        + (f" (fit error {rms:.0f} m)" if rms is not None else "")
+        + "."
+    )
+    if open_inc is not None:
+        open_inc.device_battery_pct = packet.battery_pct
+        open_inc.mesh_hops = packet.hop_count
+        open_inc.people_affected = max(open_inc.people_affected, packet.casualty_estimate)
+        open_inc.description = description
+        record_audit(db, "lora-gateway", "LORA_PACKET_REFRESH", "incident", open_inc.id, f"battery {packet.battery_pct}%", role="DEVICE")
+        db.commit()
+        db.refresh(open_inc)
+        return {"created": False, "incident": IncidentOut.model_validate(open_inc), "location_method": method, "trilateration_rms_m": rms}
+
+    inc = Incident(
+        id=f"INC-LORA-{uuid.uuid4().hex[:6].upper()}",
+        title=f"LoRa Mesh SOS from beacon {packet.beacon_id}",
+        description=description,
+        area=packet.area or beacon.hotspot,
+        latitude=lat,
+        longitude=lon,
+        severity=severity,
+        people_affected=packet.casualty_estimate,
+        status="REPORTED",
+        source="MESH_SOS",
+        device_battery_pct=packet.battery_pct,
+        mesh_hops=packet.hop_count,
+        beacon_id=packet.beacon_id,
+        location_method=method,
+        data_label=label,
+    )
+    db.add(inc)
+    record_audit(db, "lora-gateway", "LORA_PACKET_INGESTED", "incident", inc.id, f"beacon {packet.beacon_id} via {method}", role="DEVICE")
+    db.commit()
+    db.refresh(inc)
+    return {"created": True, "incident": IncidentOut.model_validate(inc), "location_method": method, "trilateration_rms_m": rms}
+
+
+@router.post("/{incident_id}/state", response_model=IncidentOut)
+def change_incident_state(incident_id: str, payload: IncidentStateChange, db: Session = Depends(get_db)):
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    target = lifecycle.normalize(payload.to_status)
+    if target == "DUPLICATE":
+        if not payload.duplicate_of:
+            raise HTTPException(status_code=422, detail="duplicate_of is required when marking an incident as DUPLICATE")
+        if not db.query(Incident).filter(Incident.id == payload.duplicate_of).first():
+            raise HTTPException(status_code=404, detail=f"Incident {payload.duplicate_of} not found")
+        inc.duplicate_of = payload.duplicate_of
+    raise_if_dispatch_blocked(inc, target)
+    lifecycle.transition(db, inc, target, actor=payload.actor, note=payload.note)
+    db.commit()
+    db.refresh(inc)
+    return IncidentOut.model_validate(inc)
+
+
+@router.get("/{incident_id}/history", response_model=dict)
+def get_incident_history(incident_id: str, db: Session = Depends(get_db)):
+    entries = (
+        db.query(AuditLog)
+        .filter(AuditLog.target_type == "incident", AuditLog.target_id == incident_id)
+        .order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+        .all()
+    )
+    return {"items": [AuditOut.model_validate(e) for e in entries], "count": len(entries)}
+
 
 @router.get("/", response_model=dict)
 def list_incidents(
@@ -127,6 +286,7 @@ def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)):
     )
 
     db.add(incident)
+    record_audit(db, payload.reporter_name or "citizen", "INCIDENT_REPORTED", "incident", new_id, payload.title, role="CITIZEN")
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
@@ -145,11 +305,11 @@ def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
 
     if payload.status is not None:
-        inc.status = payload.status.upper()
+        target = lifecycle.normalize(payload.status)
+        raise_if_dispatch_blocked(inc, target)
+        lifecycle.transition(db, inc, target)
     if payload.assigned_team_id is not None:
         inc.assigned_team_id = payload.assigned_team_id
-        if inc.status in ["REPORTED", "VERIFIED"]:
-            inc.status = "ASSIGNED"
     if payload.severity is not None:
         inc.severity = payload.severity.upper()
     if payload.people_affected is not None:

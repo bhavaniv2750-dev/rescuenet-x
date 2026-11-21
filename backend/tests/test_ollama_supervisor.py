@@ -288,7 +288,7 @@ def test_unauthorized_dispatch_prevention(db_session):
 
         # Commander authorization workflow
         approved = approve_supervisor_task(task_id=task_out.id, db=db_session)
-        assert approved.status == "COMPLETED"
+        assert approved.status == "APPROVED"
         assert approved.requires_human_approval is False
         assert "Human Commander Authorization" in approved.approved_by
 

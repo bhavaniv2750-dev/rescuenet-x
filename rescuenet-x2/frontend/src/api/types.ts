@@ -1,3 +1,10 @@
+export type IncidentStatus =
+  | 'REPORTED' | 'UNDER_VERIFICATION' | 'VERIFIED' | 'QUEUED' | 'TRIAGE_IN_PROGRESS'
+  | 'PENDING_APPROVAL' | 'DISPATCHED' | 'IN_TRANSIT' | 'ON_SCENE' | 'RESOLVED'
+  | 'DUPLICATE' | 'REJECTED' | 'CANCELLED';
+
+export type DataLabel = 'OBSERVED' | 'PREDICTED' | 'SIMULATED';
+
 export interface Incident {
   id: string;
   title: string;
@@ -7,8 +14,13 @@ export interface Incident {
   longitude: float;
   severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
   people_affected: number;
-  status: 'REPORTED' | 'VERIFIED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED';
+  status: IncidentStatus;
   source: string;
+  data_label?: DataLabel | string;
+  beacon_id?: string | null;
+  location_method?: string | null;
+  verified_by?: string | null;
+  duplicate_of?: string | null;
   incident_type?: string;
   image_url?: string | null;
   reporter_name?: string | null;
@@ -97,13 +109,17 @@ export interface SupervisorTask {
   id: string;
   task_type: string;
   title: string;
-  status: 'COMPLETED' | 'PENDING_APPROVAL' | 'EXECUTING' | 'FAILED';
+  status: 'COMPLETED' | 'PENDING_APPROVAL' | 'APPROVED' | 'DECLINED' | 'EXECUTING' | 'FAILED';
   agent_flow: string;
   input_summary: string;
   findings: string;
   recommendations: string;
   requires_human_approval: boolean;
   approved_by?: string | null;
+  incident_id?: string | null;
+  suggested_team_id?: string | null;
+  suggested_facility_id?: string | null;
+  decision_note?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -364,4 +380,26 @@ export interface PaginatedImagesResponse {
     model_status: string;
   };
   images: ImageItem[];
+}
+
+export interface AuditEntry {
+  id: number;
+  actor: string;
+  role: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details?: string | null;
+  created_at: string;
+}
+
+export interface Beacon {
+  beacon_id: string;
+  hotspot: string;
+  latitude: number;
+  longitude: number;
+  last_battery_pct?: number | null;
+  last_hops?: number | null;
+  last_seen?: string | null;
+  data_label: string;
 }

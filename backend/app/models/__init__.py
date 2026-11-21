@@ -1,5 +1,7 @@
 from app.models.entities import (
     Alert,
+    AuditLog,
+    Beacon,
     DatasetRegistry,
     Facility,
     Incident,
@@ -10,6 +12,8 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "AuditLog",
+    "Beacon",
     "Incident",
     "RescueTeam",
     "Volunteer",

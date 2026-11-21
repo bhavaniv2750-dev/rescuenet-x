@@ -99,11 +99,14 @@ def test_full_system():
     assert r.status_code == 200
     teams = r.json()
     assert teams["count"] > 0
-    team_id = teams["items"][0]["id"]
+    team_id = next(t["id"] for t in teams["items"] if t["status"] == "AVAILABLE")
 
+    # HIGH severity with 5 people meets the approval rule, so direct assignment must be refused.
     r = client.post(f"/api/teams/{team_id}/assign", json={"incident_id": created_inc["id"]})
+    assert r.status_code == 409
+    r = client.post(f"/api/incidents/{created_inc['id']}/state", json={"to_status": "VERIFIED"})
     assert r.status_code == 200
-    print(f" Team Assignment OK: Team {team_id} assigned to {created_inc['id']}")
+    print(f" Safety gate OK: direct dispatch of {created_inc['id']} refused")
 
     print("\n=== 10. Facilities & Distance Calculation ===")
     r = client.get("/api/facilities/?lat=12.9716&lon=77.5946")
@@ -142,7 +145,9 @@ def test_full_system():
     if task["requires_human_approval"]:
         r_appr = client.post(f"/api/agents/tasks/{task['id']}/approve")
         assert r_appr.status_code == 200
-        assert r_appr.json()["status"] == "COMPLETED"
+        assert r_appr.json()["status"] == "APPROVED"
+        r_inc = client.get(f"/api/incidents/{created_inc['id']}")
+        assert r_inc.json()["status"] == "DISPATCHED"
         print("   Human Approval Gatekeeper Verified!")
 
     print("\n=== 14. Image Upload & Static Retrieval ===")

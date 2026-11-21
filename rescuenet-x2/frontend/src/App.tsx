@@ -99,7 +99,7 @@ export function App() {
   }, [loadAllData]);
 
   const activeAlertsCount = alerts.filter((a) => a.status === 'ACTIVE').length;
-  const activeIncidentsCount = incidents.filter((i) => i.status !== 'RESOLVED').length;
+  const activeIncidentsCount = incidents.filter((i) => !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(i.status)).length;
 
   // Newest qualifying high/critical emergency alert that has not been dismissed in this session
   const newestEmergencyAlert = alerts.find(

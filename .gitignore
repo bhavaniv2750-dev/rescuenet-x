@@ -64,3 +64,7 @@ datasets/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime uploads (incident photos)
+backend/uploads/*
+!backend/uploads/.gitkeep

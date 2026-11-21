@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { api } from '../../api/client';
 import type { Incident, RescueTeam } from '../../api/types';
 import { Plus } from 'lucide-react';
+import { INCIDENT_STATES, actionsFor, humanStatus, needsCommanderApproval, statusPillClass } from '../../lib/lifecycle';
+import type { LifecycleAction } from '../../lib/lifecycle';
 
 interface RescueOperationsViewProps {
   incidents: Incident[];
@@ -22,16 +24,42 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
   const [filterSeverity, setFilterSeverity] = useState<string>('ALL');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const statuses = ['REPORTED', 'VERIFIED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
+  const statuses = INCIDENT_STATES;
+  const availableTeams = teams.filter((t) => t.status === 'AVAILABLE');
+
+  const openAssign = (inc: Incident) => {
+    setAssignTeamModal(inc);
+    setSelectedTeamId(availableTeams[0]?.id || '');
+  };
 
   const handleStatusTransition = async (incId: string, newStatus: string) => {
     try {
-      await api.updateIncident(incId, { status: newStatus });
-      setActionNotice(`Incident ${incId} transitioned to ${newStatus}.`);
+      await api.changeIncidentState(incId, newStatus, { actor: 'operator' });
+      setActionNotice(`Incident ${incId} moved to ${humanStatus(newStatus)}.`);
       onRefresh();
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const handleTriage = async (inc: Incident) => {
+    try {
+      const task = await api.executeSupervisorTriage({ task_type: 'RESCUE_DISPATCH', incident_id: inc.id });
+      setActionNotice(
+        task.requires_human_approval
+          ? `Supervisor task ${task.id} created. ${inc.id} is waiting for commander approval in the Supervisor view.`
+          : `Supervisor task ${task.id} completed for ${inc.id}.`,
+      );
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const runAction = (inc: Incident, a: LifecycleAction) => {
+    if (a.kind === 'dispatch') return openAssign(inc);
+    if (a.kind === 'triage') return handleTriage(inc);
+    if (a.to) return handleStatusTransition(inc.id, a.to);
   };
 
   const handleAssignTeam = async () => {
@@ -59,8 +87,8 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
         <div>
           <h2>Rescue Operations & Incident Dispatch Command</h2>
           <p>
-            Track lifecycle transitions: <code>REPORTED → VERIFIED → ASSIGNED → IN_PROGRESS → RESOLVED</code>.
-            Dispatch specialized NDRF, SDRF, and Civil Defense boat squads.
+            Lifecycle: <code>REPORTED → VERIFIED → QUEUED → TRIAGE → PENDING APPROVAL → DISPATCHED → IN TRANSIT → ON SCENE → RESOLVED</code>.
+            Incidents with five or more victims, or HIGH/CRITICAL severity, are dispatched only after commander approval.
           </p>
         </div>
         <button className="btn-primary" onClick={onOpenReportModal}>
@@ -108,7 +136,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
               className={`filter-btn ${filterStatus === st ? 'active' : ''}`}
               onClick={() => setFilterStatus(st)}
             >
-              {st}
+              {humanStatus(st)}
             </button>
           ))}
         </div>
@@ -152,7 +180,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
             </thead>
             <tbody>
               {filteredIncidents.map((inc) => (
-                <tr key={inc.id} className={inc.status === 'RESOLVED' ? 'row-resolved' : ''}>
+                <tr key={inc.id} className={['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(inc.status) ? 'row-resolved' : ''}>
                   <td className="font-mono font-bold text-cyan">{inc.id}</td>
                   <td>
                     <strong>{inc.title}</strong>
@@ -166,66 +194,45 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
                   <td>
                     <span className="font-mono font-bold">{inc.people_affected}</span>
                   </td>
-                  <td className="text-xs text-muted font-mono">{inc.source}</td>
+                  <td className="text-xs text-muted font-mono">
+                    {inc.source}
+                    {inc.data_label && <div style={{ fontSize: '10px', marginTop: '2px' }}>[{inc.data_label}]</div>}
+                  </td>
                   <td>
                     {inc.assigned_team_id ? (
                       <span className="badge-team">{inc.assigned_team_id}</span>
-                    ) : (
-                      <button
-                        className="btn-outline btn-xs text-cyan"
-                        onClick={() => {
-                          setAssignTeamModal(inc);
-                          setSelectedTeamId(teams[0]?.id || '');
-                        }}
-                      >
+                    ) : inc.status === 'DISPATCHED' ? (
+                      <button className="btn-outline btn-xs text-cyan" onClick={() => openAssign(inc)}>
                         + Assign Squad
                       </button>
+                    ) : (
+                      <span className="text-muted text-xs">—</span>
                     )}
                   </td>
                   <td>
-                    <span className={`status-pill pill-${inc.status.toLowerCase()}`}>
-                      {inc.status}
+                    <span className={`status-pill ${statusPillClass(inc.status)}`}>
+                      {humanStatus(inc.status)}
                     </span>
+                    {needsCommanderApproval(inc) && !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(inc.status) && (
+                      <div className="text-xs text-orange" style={{ marginTop: '2px' }}>approval gate</div>
+                    )}
                   </td>
                   <td>
                     <div className="action-button-group">
-                      {inc.status === 'REPORTED' && (
+                      {actionsFor(inc).map((a) => (
                         <button
-                          className="btn-secondary btn-xs"
-                          onClick={() => handleStatusTransition(inc.id, 'VERIFIED')}
+                          key={a.label}
+                          className={`btn-secondary btn-xs ${a.tone ? `text-${a.tone}` : ''}`}
+                          onClick={() => runAction(inc, a)}
                         >
-                          Verify ✓
+                          {a.label}
                         </button>
+                      ))}
+                      {inc.status === 'PENDING_APPROVAL' && (
+                        <span className="text-xs text-orange">Awaiting commander (Supervisor view)</span>
                       )}
-                      {inc.status === 'VERIFIED' && (
-                        <button
-                          className="btn-secondary btn-xs text-cyan"
-                          onClick={() => {
-                            setAssignTeamModal(inc);
-                            setSelectedTeamId(teams[0]?.id || '');
-                          }}
-                        >
-                          Dispatch Team
-                        </button>
-                      )}
-                      {inc.status === 'ASSIGNED' && (
-                        <button
-                          className="btn-secondary btn-xs text-orange"
-                          onClick={() => handleStatusTransition(inc.id, 'IN_PROGRESS')}
-                        >
-                          Begin Rescue ➔
-                        </button>
-                      )}
-                      {inc.status === 'IN_PROGRESS' && (
-                        <button
-                          className="btn-secondary btn-xs text-emerald"
-                          onClick={() => handleStatusTransition(inc.id, 'RESOLVED')}
-                        >
-                          Mark Resolved ✓
-                        </button>
-                      )}
-                      {inc.status === 'RESOLVED' && (
-                        <span className="text-muted text-xs">Completed</span>
+                      {['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(inc.status) && (
+                        <span className="text-muted text-xs">Closed</span>
                       )}
                     </div>
                   </td>
@@ -258,7 +265,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
                   value={selectedTeamId}
                   onChange={(e) => setSelectedTeamId(e.target.value)}
                 >
-                  {teams.map((t) => (
+                  {availableTeams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.callsign}) — {t.vehicle_type} [{t.status}]
                     </option>
@@ -270,7 +277,10 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
                 <button className="btn-secondary" onClick={() => setAssignTeamModal(null)}>
                   Cancel
                 </button>
-                <button className="btn-primary" onClick={handleAssignTeam}>
+                {availableTeams.length === 0 && (
+                  <span className="text-xs text-orange">No team is AVAILABLE right now.</span>
+                )}
+                <button className="btn-primary" onClick={handleAssignTeam} disabled={!selectedTeamId}>
                   Confirm Dispatch
                 </button>
               </div>
