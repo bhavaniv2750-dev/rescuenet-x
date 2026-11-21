@@ -32,7 +32,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return (
       <div className="view-loading">
         <div className="spinner" />
-        <p>Loading real-time command center telemetry...</p>
+        <p>Loading command center data...</p>
       </div>
     );
   }
@@ -124,7 +124,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="panel-title-bar">
               <div>
                 <h3>AI Flood Forecasting</h3>
-                <p>RandomForest Model (Trained on 1000 real sensor records)</p>
+                <p>
+                  Example scenario ({forecast?.scenario_inputs?.rainfall_mm ?? '—'} mm/h rain, {forecast?.scenario_inputs?.water_level_m ?? '—'} m water level).
+                  Enter real readings under Flood Forecasting.
+                </p>
               </div>
               <Activity className="icon text-cyan" size={18} />
             </div>
@@ -132,10 +135,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="risk-level-box">
               <div className="risk-level-tag">
                 <span className={`risk-dot ${forecast?.risk_level === 'CRITICAL' ? 'dot-red' : forecast?.risk_level === 'HIGH' ? 'dot-orange' : 'dot-yellow'}`} />
-                <span>RISK LEVEL: <strong>{forecast?.risk_level || 'ELEVATED'}</strong></span>
+                <span>RISK LEVEL: <strong>{forecast?.risk_level || '—'}</strong></span>
               </div>
               <div className="probability-display">
-                <span className="prob-value">{Math.round((forecast?.probability || 0.65) * 100)}%</span>
+                <span className="prob-value">{forecast ? `${Math.round(forecast.probability * 100)}%` : '—'}</span>
                 <span className="prob-caption">Flood Probability</span>
               </div>
 
@@ -143,20 +146,20 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="horizons-row">
                 <div className="horizon-item">
                   <span className="horizon-label">+30 MIN</span>
-                  <span className="horizon-val">{Math.round((forecast?.horizon_30m || 0.72) * 100)}%</span>
+                  <span className="horizon-val">{forecast ? `${Math.round(forecast.horizon_30m * 100)}%` : '—'}</span>
                 </div>
                 <div className="horizon-item">
                   <span className="horizon-label">+45 MIN</span>
-                  <span className="horizon-val">{Math.round((forecast?.horizon_45m || 0.78) * 100)}%</span>
+                  <span className="horizon-val">{forecast ? `${Math.round(forecast.horizon_45m * 100)}%` : '—'}</span>
                 </div>
                 <div className="horizon-item">
                   <span className="horizon-label">+60 MIN</span>
-                  <span className="horizon-val">{Math.round((forecast?.horizon_60m || 0.85) * 100)}%</span>
+                  <span className="horizon-val">{forecast ? `${Math.round(forecast.horizon_60m * 100)}%` : '—'}</span>
                 </div>
               </div>
 
               <div className="forecast-advisory">
-                ⓘ {forecast?.advisory || 'Runoff accumulation expected in low-lying corridors.'}
+                ⓘ {forecast?.advisory || 'No forecast loaded.'}
               </div>
 
               <button className="btn-primary btn-block" style={{ marginTop: '12px' }} onClick={() => onNavigate('Flood Forecasting')}>
@@ -170,7 +173,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="panel-title-bar">
               <div>
                 <h3>Priority Triage Queue</h3>
-                <p>Real-time field reports requiring response</p>
+                <p>Field reports and LoRa SOS packets requiring response</p>
               </div>
               <button className="text-link" onClick={() => onNavigate('Rescue Operations')}>
                 View all ({summary?.active_incidents || 0}) →
@@ -204,7 +207,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         <div className="active-alerts-banner">
           <div className="alert-banner-header">
             <Bell size={18} className="text-orange" />
-            <strong>ACTIVE GEO-TARGETED EMERGENCY ALERTS ({data.active_alerts_feed.length})</strong>
+            <strong>ALERTS IN FORCE ({data.active_alerts_feed.length})</strong>
           </div>
           <div className="alert-cards-row">
             {data.active_alerts_feed.map((alt) => (
@@ -214,7 +217,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <span className="text-muted font-mono">{alt.id}</span>
                 </div>
                 <div className="mini-alert-title">{alt.title}</div>
-                <div className="mini-alert-meta">📍 {alt.area} · Radius {alt.radius_km} km · {alt.acknowledged_count} acknowledgments</div>
+                <div className="mini-alert-meta">📍 {alt.area} · Radius {alt.radius_km} km · {alt.acknowledged_count} seen</div>
               </div>
             ))}
           </div>

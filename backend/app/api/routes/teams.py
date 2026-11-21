@@ -2,9 +2,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
-from app.models.entities import Incident, RescueTeam
+from app.models.entities import Incident, RescueTeam, User
 from app.schemas.domain import RescueTeamCreate, RescueTeamOut
+from app.services import incident_lifecycle as lifecycle
+from app.services.audit import record_audit
 
 router = APIRouter()
 
@@ -14,7 +18,7 @@ class TeamStatusUpdate(BaseModel):
 class TeamAssignRequest(BaseModel):
     incident_id: str
 
-@router.get("/", response_model=dict)
+@router.get("/", response_model=dict, dependencies=[Depends(require_roles(*DEPT))])
 def list_teams(status_filter: Optional[str] = Query(None, alias="status"), db: Session = Depends(get_db)):
     query = db.query(RescueTeam)
     if isinstance(status_filter, str) and status_filter.strip():
@@ -27,7 +31,7 @@ def list_teams(status_filter: Optional[str] = Query(None, alias="status"), db: S
         "deployed_count": sum(1 for t in teams if t.status == "DEPLOYED"),
     }
 
-@router.post("/", response_model=RescueTeamOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RescueTeamOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
 def create_team(payload: RescueTeamCreate, db: Session = Depends(get_db)):
     count = db.query(RescueTeam).count()
     new_id = f"TEAM-{payload.callsign.upper()}-{count + 1}"
@@ -50,7 +54,7 @@ def create_team(payload: RescueTeamCreate, db: Session = Depends(get_db)):
     db.refresh(team)
     return RescueTeamOut.model_validate(team)
 
-@router.patch("/{team_id}/status", response_model=RescueTeamOut)
+@router.patch("/{team_id}/status", response_model=RescueTeamOut, dependencies=[Depends(require_roles(*OPS))])
 def update_team_status(team_id: str, payload: TeamStatusUpdate, db: Session = Depends(get_db)):
     team = db.query(RescueTeam).filter(RescueTeam.id == team_id).first()
     if not team:
@@ -62,7 +66,8 @@ def update_team_status(team_id: str, payload: TeamStatusUpdate, db: Session = De
     return RescueTeamOut.model_validate(team)
 
 @router.post("/{team_id}/assign")
-def assign_team_to_incident(team_id: str, payload: TeamAssignRequest, db: Session = Depends(get_db)):
+def assign_team_to_incident(team_id: str, payload: TeamAssignRequest, db: Session = Depends(get_db),
+                            user: User = Depends(require_roles(*OPS))):
     team = db.query(RescueTeam).filter(RescueTeam.id == team_id).first()
     if not team:
         raise HTTPException(status_code=404, detail=f"Rescue team {team_id} not found")
@@ -71,9 +76,23 @@ def assign_team_to_incident(team_id: str, payload: TeamAssignRequest, db: Sessio
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {payload.incident_id} not found")
 
+    if team.status != "AVAILABLE":
+        raise HTTPException(status_code=409, detail=f"Team {team.id} is {team.status}, not AVAILABLE")
+    current = lifecycle.normalize(incident.status)
+    if current != "DISPATCHED":
+        # Safety gate: high-impact incidents need a commander-approved supervisor task first.
+        if current != "PENDING_APPROVAL" and lifecycle.requires_commander_approval(incident.people_affected, incident.severity):
+            raise HTTPException(
+                status_code=409,
+                detail="This incident needs commander approval (five or more victims, or HIGH or CRITICAL severity). Run supervisor triage and approve the task.",
+            )
+        if current == "PENDING_APPROVAL":
+            raise HTTPException(status_code=409, detail="Incident is waiting for commander approval; approve the supervisor task to dispatch it.")
+        lifecycle.transition(db, incident, "DISPATCHED", actor=actor_name(user, "operator"), note=f"team {team.id}")
+
     incident.assigned_team_id = team.id
-    incident.status = "ASSIGNED"
     team.status = "DEPLOYED"
+    record_audit(db, actor_name(user, "operator"), "TEAM_ASSIGNED", "incident", incident.id, team.id, role="OPERATOR")
 
     db.commit()
     return {

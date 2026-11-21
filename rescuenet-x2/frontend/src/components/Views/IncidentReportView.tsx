@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../api/client';
-import type { Incident } from '../../api/types';
+import { api, assetUrl } from '../../api/client';
+import type { Incident, WaterDepth } from '../../api/types';
+import { cleanMessage, toast } from '../../lib/toast';
+import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
+import { actionsFor, humanStatus, statusPillClass } from '../../lib/lifecycle';
 import {
   AlertTriangle,
   Camera,
@@ -21,6 +24,8 @@ import {
 
 interface IncidentReportViewProps {
   onSuccess: () => void;
+  /** Citizens, volunteers and officers can file a report but cannot browse everyone's reports. */
+  intakeOnly?: boolean;
 }
 
 const PRESET_LOCATIONS = [
@@ -31,7 +36,7 @@ const PRESET_LOCATIONS = [
   { name: 'Hebbal Flyover Drain', lat: 13.0358, lng: 77.597 },
 ];
 
-export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSuccess }) => {
+export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSuccess, intakeOnly = false }) => {
   const [activeTab, setActiveTab] = useState<'form' | 'directory'>('form');
 
   // Form State
@@ -45,6 +50,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
   const [longitude, setLongitude] = useState(77.696);
   const [reporterName, setReporterName] = useState('');
   const [reporterContact, setReporterContact] = useState('');
+  const [waterDepth, setWaterDepth] = useState<WaterDepth>('UNKNOWN');
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [brokenImage, setBrokenImage] = useState<string | null>(null);
 
   // Image Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -65,6 +74,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
   const [loadingDirectory, setLoadingDirectory] = useState(false);
 
   const fetchIncidents = async () => {
+    if (intakeOnly) return; // not allowed to list everyone's reports
     setLoadingDirectory(true);
     try {
       const res = await api.getIncidents({
@@ -157,6 +167,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         image_url: uploadedImageUrl,
         reporter_name: reporterName || undefined,
         reporter_contact: reporterContact || undefined,
+        reported_water_depth: waterDepth,
       });
 
       setSubmittedNotice(
@@ -166,6 +177,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       setDescription('');
       setReporterName('');
       setReporterContact('');
+      setWaterDepth('UNKNOWN');
       handleRemoveImage();
 
       // Refresh data
@@ -174,7 +186,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       setSelectedIncident(newInc);
       setActiveTab('directory');
     } catch (err: any) {
-      alert(`Submission error: ${err.message}`);
+      toast.error(`Could not submit: ${cleanMessage(err)}`);
     } finally {
       setSubmitting(false);
     }
@@ -182,19 +194,33 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
   const handleStatusUpdate = async (incidentId: string, newStatus: string) => {
     try {
-      const updated = await api.updateIncident(incidentId, { status: newStatus });
+      const updated = await api.changeIncidentState(incidentId, newStatus, { actor: 'operator' });
       setSelectedIncident(updated);
       setIncidents((prev) => prev.map((inc) => (inc.id === incidentId ? updated : inc)));
       onSuccess();
     } catch (err: any) {
-      alert(`Status update failed: ${err.message}`);
+      toast.error(`Status update failed: ${cleanMessage(err)}`);
+    }
+  };
+
+  const handleAnalyzePhoto = async () => {
+    if (!selectedIncident) return;
+    setAnalyzingPhoto(true);
+    setPhotoError(null);
+    try {
+      const updated = await api.analyzeIncidentPhoto(selectedIncident.id);
+      setSelectedIncident(updated);
+      setIncidents((prev) => prev.map((inc) => (inc.id === updated.id ? updated : inc)));
+    } catch (err: any) {
+      setPhotoError(err.message);
+    } finally {
+      setAnalyzingPhoto(false);
     }
   };
 
   const resolveImageSource = (url?: string | null) => {
     if (!url) return null;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    return `http://127.0.0.1:8000${url}`;
+    return assetUrl(url);
   };
 
   return (
@@ -204,10 +230,12 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         <div>
           <h2>Incident Reporting, Triage & Verification</h2>
           <p>
-            Ground-truth emergency intake portal. Citizen reports are validated, geotagged, linked to
-            field photographic evidence, and routed to rescue command.
+            {intakeOnly
+              ? 'Tell the rescue control room what is happening and where. If anyone is in immediate danger, call 112 first.'
+              : 'Emergency intake. Reports are geotagged, can carry a photo, and go to the rescue control room for verification.'}
           </p>
         </div>
+        {!intakeOnly && (
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             className={activeTab === 'form' ? 'btn-primary' : 'btn-secondary'}
@@ -222,6 +250,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
             <Eye size={16} /> Incident Directory ({incidents.length})
           </button>
         </div>
+        )}
       </div>
 
       {submittedNotice && (
@@ -237,7 +266,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         <div className="panel form-panel" style={{ maxWidth: '850px', margin: '0 auto' }}>
           <div className="panel-title-bar">
             <div>
-              <h3>Emergency Incident Intake Form</h3>
+              <h3>Emergency report</h3>
               <p>Enter ground-truth field observations and attach photographic evidence</p>
             </div>
             <AlertTriangle size={18} className="text-amber" />
@@ -245,7 +274,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
           <form onSubmit={handleSubmit} className="incident-intake-form" style={{ marginTop: '16px' }}>
             <label>
-              Incident Headline / Emergency Summary *
+              What is happening? (short summary) *
               <input
                 required
                 minLength={5}
@@ -364,6 +393,17 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                 />
               </label>
             </div>
+
+            <label>
+              Water depth where you are
+              <select className="select-input" value={waterDepth} onChange={(e) => setWaterDepth(e.target.value as WaterDepth)}>
+                <option value="UNKNOWN">Not sure</option>
+                <option value="ANKLE">Ankle deep (below 0.3 m)</option>
+                <option value="KNEE">Knee deep (0.3 to 0.6 m)</option>
+                <option value="WAIST">Waist deep (0.6 to 1.0 m)</option>
+                <option value="CHEST_OR_DEEPER">Chest deep or more (above 1.0 m)</option>
+              </select>
+            </label>
 
             <label>
               Detailed Field Observations *
@@ -489,10 +529,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
               style={{ padding: '12px', fontSize: '14px', fontWeight: 600 }}
             >
               {submitting
-                ? 'Validating & Persisting Incident...'
+                ? 'Sending…'
                 : uploadingImage
-                ? 'Uploading Image Attachment...'
-                : 'Transmit Incident Report to Dispatch'}
+                ? 'Uploading photo…'
+                : 'Send report'}
             </button>
           </form>
         </div>
@@ -517,14 +557,14 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
               {/* Status Filter */}
               <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {['ALL', 'REPORTED', 'VERIFIED', 'ASSIGNED', 'RESOLVED'].map((st) => (
+                {['ALL', 'REPORTED', 'UNDER_VERIFICATION', 'VERIFIED', 'PENDING_APPROVAL', 'DISPATCHED', 'ON_SCENE', 'RESOLVED'].map((st) => (
                   <button
                     key={st}
                     className={`status-pill ${statusFilter === st ? 'pill-active' : ''}`}
                     style={{ cursor: 'pointer', fontSize: '11px', padding: '2px 8px' }}
                     onClick={() => setStatusFilter(st)}
                   >
-                    {st}
+                    {humanStatus(st)}
                   </button>
                 ))}
               </div>
@@ -562,18 +602,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                           {inc.id}
                         </span>
                         <span
-                          className={`status-pill ${
-                            inc.status === 'REPORTED'
-                              ? 'pill-amber'
-                              : inc.status === 'VERIFIED'
-                              ? 'pill-cyan'
-                              : inc.status === 'RESOLVED'
-                              ? 'pill-muted'
-                              : 'pill-active'
-                          }`}
+                          className={`status-pill ${statusPillClass(inc.status)}`}
                           style={{ fontSize: '10px' }}
                         >
-                          {inc.status}
+                          {humanStatus(inc.status)}
                         </span>
                       </div>
 
@@ -611,17 +643,9 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         {selectedIncident.id}
                       </span>
                       <span
-                        className={`status-pill ${
-                          selectedIncident.status === 'REPORTED'
-                            ? 'pill-amber'
-                            : selectedIncident.status === 'VERIFIED'
-                            ? 'pill-cyan'
-                            : selectedIncident.status === 'RESOLVED'
-                            ? 'pill-muted'
-                            : 'pill-active'
-                        }`}
+                        className={`status-pill ${statusPillClass(selectedIncident.status)}`}
                       >
-                        {selectedIncident.status}
+                        {humanStatus(selectedIncident.status)}
                       </span>
                       <span
                         className="status-pill"
@@ -640,24 +664,18 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
                   {/* Status Actions */}
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {selectedIncident.status === 'REPORTED' && (
-                      <button
-                        className="btn-primary"
-                        style={{ fontSize: '12px' }}
-                        onClick={() => handleStatusUpdate(selectedIncident.id, 'VERIFIED')}
-                      >
-                        <ShieldCheck size={14} /> Verify Incident
-                      </button>
-                    )}
-                    {selectedIncident.status !== 'RESOLVED' && (
-                      <button
-                        className="btn-secondary"
-                        style={{ fontSize: '12px', color: '#10b981', borderColor: '#10b981' }}
-                        onClick={() => handleStatusUpdate(selectedIncident.id, 'RESOLVED')}
-                      >
-                        Mark Resolved
-                      </button>
-                    )}
+                    {actionsFor(selectedIncident)
+                      .filter((a) => a.kind === 'state' && a.to)
+                      .map((a) => (
+                        <button
+                          key={a.label}
+                          className={a.to === 'VERIFIED' ? 'btn-primary' : 'btn-secondary'}
+                          style={{ fontSize: '12px' }}
+                          onClick={() => handleStatusUpdate(selectedIncident.id, a.to as string)}
+                        >
+                          {a.to === 'VERIFIED' && <ShieldCheck size={14} />} {a.label}
+                        </button>
+                      ))}
                   </div>
                 </div>
 
@@ -690,6 +708,9 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                     </span>
                     <span className="text-xs text-muted" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Phone size={12} /> {selectedIncident.reporter_contact || 'No phone provided'}
+                    </span>
+                    <span className="text-xs text-muted" style={{ marginTop: '4px' }}>
+                      Reported water depth: {(selectedIncident.reported_water_depth || 'UNKNOWN').replace(/_/g, ' ')}
                     </span>
                   </div>
 
@@ -742,16 +763,34 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         alignItems: 'center',
                       }}
                     >
-                      <img
-                        src={resolveImageSource(selectedIncident.image_url) || ''}
-                        alt={`Observation for ${selectedIncident.id}`}
-                        style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
-                        onError={(e) => {
-                          (e.target as any).src = 'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=600&q=80';
-                        }}
-                      />
+                      {brokenImage === selectedIncident.image_url ? (
+                        <div style={{ padding: '24px', color: '#64748b', fontSize: '13px' }}>
+                          The attached photo could not be loaded.
+                        </div>
+                      ) : (
+                        <img
+                          src={resolveImageSource(selectedIncident.image_url) || ''}
+                          alt={`Observation for ${selectedIncident.id}`}
+                          style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
+                          onError={() => setBrokenImage(selectedIncident.image_url || null)}
+                        />
+                      )}
                     </div>
-                  ) : (
+                  ) : null}
+                  {selectedIncident.image_url && (
+                    <div style={{ marginTop: '10px' }}>
+                      <button className="btn-secondary" style={{ fontSize: '12px' }} onClick={handleAnalyzePhoto} disabled={analyzingPhoto}>
+                        {analyzingPhoto ? 'Analysing photo…' : selectedIncident.photo_analysis ? 'Re-run Photo Analysis (AI)' : 'Analyse Photo (AI)'}
+                      </button>
+                      {photoError && <div className="text-xs text-orange" style={{ marginTop: '6px' }}>{photoError}</div>}
+                      {selectedIncident.photo_analysis && (
+                        <div style={{ marginTop: '8px' }}>
+                          <FloodPhotoAnalysis result={selectedIncident.photo_analysis} compact />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!selectedIncident.image_url && (
                     <div
                       style={{
                         padding: '24px',

@@ -1,15 +1,20 @@
 from app.models.entities import (
     Alert,
+    AuditLog,
+    Beacon,
     DatasetRegistry,
     Facility,
     Incident,
     RescueRecord,
     RescueTeam,
     SupervisorTask,
+    User,
     Volunteer,
 )
 
 __all__ = [
+    "AuditLog",
+    "Beacon",
     "Incident",
     "RescueTeam",
     "Volunteer",
@@ -18,4 +23,5 @@ __all__ = [
     "RescueRecord",
     "SupervisorTask",
     "DatasetRegistry",
+    "User",
 ]

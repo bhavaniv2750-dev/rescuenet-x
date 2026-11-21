@@ -24,7 +24,7 @@ class Incident(Base):
     longitude = Column(Float, nullable=False)
     severity = Column(String(20), nullable=False, default="HIGH")  # CRITICAL, HIGH, MODERATE, LOW
     people_affected = Column(Integer, nullable=False, default=1)
-    status = Column(String(30), nullable=False, default="REPORTED")  # REPORTED, VERIFIED, ASSIGNED, IN_PROGRESS, RESOLVED
+    status = Column(String(30), nullable=False, default="REPORTED")  # see app.services.incident_lifecycle.STATES
     source = Column(String(50), nullable=False, default="CITIZEN_REPORT")  # CITIZEN_REPORT, MESH_SOS, SENSOR_TELEMETRY, OPERATOR
     device_battery_pct = Column(Integer, nullable=True)
     mesh_hops = Column(Integer, nullable=True)
@@ -33,8 +33,49 @@ class Incident(Base):
     reporter_name = Column(String(100), nullable=True)
     reporter_contact = Column(String(50), nullable=True)
     incident_type = Column(String(50), nullable=True, default="FLOODING")
+    # OBSERVED (real report), PREDICTED (model output) or SIMULATED (demo/test data)
+    data_label = Column(String(20), nullable=False, default="OBSERVED")
+    beacon_id = Column(String(50), nullable=True, index=True)
+    location_method = Column(String(20), nullable=True)  # GPS, TRILATERATION, MANUAL
+    verified_by = Column(String(100), nullable=True)
+    duplicate_of = Column(String(50), nullable=True)
+    # Depth as judged by the person reporting: ANKLE, KNEE, WAIST, CHEST_OR_DEEPER or UNKNOWN
+    reported_water_depth = Column(String(20), nullable=True)
+    reporter_user_id = Column(Integer, nullable=True, index=True)  # set when a logged-in user reports
+    # JSON summary of the photo analysis (PREDICTED), if a photo was analysed
+    photo_analysis = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class Beacon(Base):
+    """Registry of LoRa distress beacons."""
+
+    __tablename__ = "beacons"
+
+    beacon_id = Column(String(50), primary_key=True, index=True)
+    hotspot = Column(String(120), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    last_battery_pct = Column(Integer, nullable=True)
+    last_hops = Column(Integer, nullable=True)
+    last_seen = Column(DateTime, nullable=True)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
+
+
+class AuditLog(Base):
+    """Append-only record of consequential actions."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    actor = Column(String(100), nullable=False, default="system")
+    role = Column(String(30), nullable=False, default="SYSTEM")
+    action = Column(String(60), nullable=False, index=True)
+    target_type = Column(String(40), nullable=False)
+    target_id = Column(String(60), nullable=False, index=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now, index=True)
 
 
 class RescueTeam(Base):
@@ -64,6 +105,8 @@ class Volunteer(Base):
     area = Column(String(100), nullable=False)
     is_verified = Column(Boolean, nullable=False, default=False)
     status = Column(String(30), nullable=False, default="AVAILABLE")  # AVAILABLE, ASSIGNED, STANDBY
+    assigned_incident_id = Column(String(50), nullable=True, index=True)
+    verified_by = Column(String(100), nullable=True)
     registered_at = Column(DateTime, default=utc_now)
 
 
@@ -78,9 +121,16 @@ class Alert(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     radius_km = Column(Float, nullable=False, default=3.0)
-    status = Column(String(30), nullable=False, default="ACTIVE")  # ACTIVE, ACKNOWLEDGED, RESOLVED
-    delivery_channel = Column(String(50), nullable=False, default="SIMULATED_CAP_ALERT")
+    status = Column(String(30), nullable=False, default="ACTIVE")  # ACTIVE (not yet seen by a commander), ACKNOWLEDGED (in force), RESOLVED
+    delivery_channel = Column(String(50), nullable=False, default="IN_APP")
+    # Number of people who tapped "seen". It does not change the alert's status.
     acknowledged_count = Column(Integer, nullable=False, default=0)
+    # Set when a commander or administrator acknowledges the alert; stops escalation.
+    acknowledged_by = Column(String(100), nullable=True)
+    escalation_level = Column(Integer, nullable=False, default=0)
+    escalated_at = Column(DateTime, nullable=True)
+    # OBSERVED (issued by staff) or SIMULATED (sample data shipped with the project)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
     created_at = Column(DateTime, default=utc_now)
     resolved_at = Column(DateTime, nullable=True)
 
@@ -90,7 +140,7 @@ class Facility(Base):
 
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(120), nullable=False)
-    facility_type = Column(String(50), nullable=False)  # HOSPITAL, SHELTER, RELIEF_CAMP, RESCUE_HQ
+    facility_type = Column(String(50), nullable=False)  # see app.services.facilities.FACILITY_TYPES
     address = Column(String(200), nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
@@ -98,6 +148,8 @@ class Facility(Base):
     current_occupancy = Column(Integer, nullable=False, default=0)
     status = Column(String(30), nullable=False, default="OPERATIONAL")  # OPERATIONAL, NEAR_CAPACITY, FULL
     contact = Column(String(50), nullable=False)
+    # OBSERVED (entered by staff), SIMULATED (sample data shipped with the project)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
 
 
 class RescueRecord(Base):
@@ -130,6 +182,10 @@ class SupervisorTask(Base):
     recommendations = Column(Text, nullable=False)
     requires_human_approval = Column(Boolean, nullable=False, default=False)
     approved_by = Column(String(100), nullable=True)
+    incident_id = Column(String(50), nullable=True, index=True)
+    suggested_team_id = Column(String(50), nullable=True)
+    suggested_facility_id = Column(String(50), nullable=True)
+    decision_note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -145,3 +201,25 @@ class DatasetRegistry(Base):
     coverage = Column(String(150), nullable=False)
     description = Column(Text, nullable=False)
     last_synced = Column(DateTime, default=utc_now)
+
+
+class User(Base):
+    """Login account. Role decides which portal the user signs in through and what they may do."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(60), nullable=False, unique=True, index=True)
+    full_name = Column(String(120), nullable=False)
+    email = Column(String(120), nullable=True)
+    phone = Column(String(30), nullable=True)
+    # ADMIN | COMMANDER | OPERATOR | RESCUE_OFFICER | VOLUNTEER | CITIZEN
+    role = Column(String(20), nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    team_id = Column(String(50), nullable=True)        # rescue officers: their team
+    volunteer_id = Column(String(50), nullable=True)   # volunteers: their volunteer record
+    is_active = Column(Boolean, nullable=False, default=True)
+    failed_logins = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)

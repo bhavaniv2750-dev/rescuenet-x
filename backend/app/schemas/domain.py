@@ -1,8 +1,12 @@
+import json
 from datetime import datetime
-from typing import Any, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ================= Incidents =================
+_DEPTH_PATTERN = "(?i)^(ANKLE|KNEE|WAIST|CHEST_OR_DEEPER|UNKNOWN)$"
+
+
 class IncidentCreate(BaseModel):
     title: str = Field(min_length=3, max_length=150)
     description: str = Field(min_length=3, max_length=2000)
@@ -16,9 +20,16 @@ class IncidentCreate(BaseModel):
     image_url: Optional[str] = None
     reporter_name: Optional[str] = None
     reporter_contact: Optional[str] = None
+    reported_water_depth: Optional[str] = Field(default=None, pattern=_DEPTH_PATTERN)
+
+_STATUS_PATTERN = (
+    "(?i)^(REPORTED|UNDER_VERIFICATION|VERIFIED|QUEUED|TRIAGE_IN_PROGRESS|PENDING_APPROVAL|DISPATCHED|"
+    "IN_TRANSIT|ON_SCENE|RESOLVED|DUPLICATE|REJECTED|CANCELLED|ASSIGNED|IN_PROGRESS)$"
+)
+
 
 class IncidentStatusUpdate(BaseModel):
-    status: Optional[str] = Field(None, pattern="^(REPORTED|VERIFIED|ASSIGNED|IN_PROGRESS|RESOLVED|reported|verified|assigned|in_progress|resolved)$")
+    status: Optional[str] = Field(None, pattern=_STATUS_PATTERN)
     assigned_team_id: Optional[str] = None
     severity: Optional[str] = None
     people_affected: Optional[int] = None
@@ -42,8 +53,78 @@ class IncidentOut(BaseModel):
     device_battery_pct: Optional[int] = None
     mesh_hops: Optional[int] = None
     assigned_team_id: Optional[str] = None
+    data_label: Optional[str] = "OBSERVED"
+    beacon_id: Optional[str] = None
+    location_method: Optional[str] = None
+    verified_by: Optional[str] = None
+    duplicate_of: Optional[str] = None
+    reported_water_depth: Optional[str] = None
+    photo_analysis: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("photo_analysis", mode="before")
+    @classmethod
+    def _parse_photo_analysis(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return None
+        return v
+
+
+class IncidentStateChange(BaseModel):
+    to_status: str = Field(pattern=_STATUS_PATTERN)
+    actor: str = Field(default="operator", max_length=100)
+    note: Optional[str] = Field(default=None, max_length=500)
+    duplicate_of: Optional[str] = None
+
+
+class GatewayReading(BaseModel):
+    gateway_id: str
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    rssi_dbm: float = Field(ge=-150.0, le=0.0)
+
+
+class LoRaPacket(BaseModel):
+    beacon_id: str = Field(min_length=2, max_length=50)
+    latitude: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
+    hop_count: int = Field(default=1, ge=0, le=32)
+    battery_pct: int = Field(ge=0, le=100)
+    emergency_level: str = Field(default="HIGH", pattern="(?i)^(CRITICAL|HIGH|MODERATE|LOW)$")
+    casualty_estimate: int = Field(default=1, ge=1, le=10000)
+    area: Optional[str] = Field(default=None, max_length=150)
+    gateway_readings: List[GatewayReading] = Field(default_factory=list)
+    is_simulated: bool = True
+
+
+class BeaconOut(BaseModel):
+    beacon_id: str
+    hotspot: str
+    latitude: float
+    longitude: float
+    last_battery_pct: Optional[int] = None
+    last_hops: Optional[int] = None
+    last_seen: Optional[datetime] = None
+    data_label: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditOut(BaseModel):
+    id: int
+    actor: str
+    role: str
+    action: str
+    target_type: str
+    target_id: str
+    details: Optional[str] = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -93,6 +174,8 @@ class VolunteerOut(BaseModel):
     area: str
     is_verified: bool
     status: str
+    assigned_incident_id: Optional[str] = None
+    verified_by: Optional[str] = None
     registered_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -120,6 +203,10 @@ class AlertOut(BaseModel):
     status: str
     delivery_channel: str
     acknowledged_count: int
+    acknowledged_by: Optional[str] = None
+    escalation_level: int = 0
+    escalated_at: Optional[datetime] = None
+    data_label: Optional[str] = "SIMULATED"
     created_at: datetime
     resolved_at: Optional[datetime] = None
 
@@ -129,13 +216,28 @@ class AlertOut(BaseModel):
 # ================= Facilities =================
 class FacilityCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
-    facility_type: str = Field(min_length=2, max_length=50)
+    facility_type: str = Field(
+        pattern="(?i)^(HOSPITAL|SHELTER|RELIEF_CAMP|RESCUE_HQ|POLICE_STATION|FIRE_STATION|SCHOOL)$",
+        description="HOSPITAL, SHELTER, RELIEF_CAMP, RESCUE_HQ, POLICE_STATION, FIRE_STATION or SCHOOL (a school set up as a shelter)",
+    )
     address: str = Field(min_length=2, max_length=200)
     latitude: float
     longitude: float
     total_capacity: int = Field(default=100, ge=1)
     current_occupancy: int = Field(default=0, ge=0)
     contact: str
+
+    @model_validator(mode="after")
+    def _occupancy_fits(self):
+        if self.current_occupancy > self.total_capacity:
+            raise ValueError("current_occupancy cannot be more than total_capacity")
+        return self
+
+
+class FacilityOccupancyUpdate(BaseModel):
+    current_occupancy: int = Field(ge=0)
+    total_capacity: Optional[int] = Field(default=None, ge=1)
+
 
 class FacilityOut(BaseModel):
     id: str
@@ -148,6 +250,7 @@ class FacilityOut(BaseModel):
     current_occupancy: int
     status: str
     contact: str
+    data_label: Optional[str] = "SIMULATED"
     distance_km: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -190,6 +293,11 @@ class SupervisorTaskRequest(BaseModel):
     area: Optional[str] = None
     instruction: Optional[str] = None
 
+class SupervisorTaskDecision(BaseModel):
+    commander: str = Field(default="Human Commander Authorization (Console OP-01)", max_length=120)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
 class SupervisorTaskOut(BaseModel):
     id: str
     task_type: str
@@ -201,6 +309,10 @@ class SupervisorTaskOut(BaseModel):
     recommendations: str
     requires_human_approval: bool
     approved_by: Optional[str] = None
+    incident_id: Optional[str] = None
+    suggested_team_id: Optional[str] = None
+    suggested_facility_id: Optional[str] = None
+    decision_note: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

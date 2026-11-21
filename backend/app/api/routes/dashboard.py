@@ -4,6 +4,9 @@ from sqlalchemy import case, func
 from app.db.session import get_db
 from app.ml.flood_model import flood_ml_service
 from app.models.entities import Alert, Facility, Incident, RescueRecord, RescueTeam, Volunteer
+from app.services.incident_lifecycle import TERMINAL_STATES
+
+CLOSED_STATES = sorted(TERMINAL_STATES)
 
 router = APIRouter()
 
@@ -11,10 +14,10 @@ router = APIRouter()
 def get_dashboard(db: Session = Depends(get_db)):
     # Incident stats
     total_incidents = db.query(Incident).count()
-    active_incidents = db.query(Incident).filter(Incident.status != "RESOLVED").count()
+    active_incidents = db.query(Incident).filter(Incident.status.notin_(CLOSED_STATES)).count()
     critical_incidents = db.query(Incident).filter(
         Incident.severity.in_(["CRITICAL", "critical"]),
-        Incident.status != "RESOLVED"
+        Incident.status.notin_(CLOSED_STATES)
     ).count()
     people_affected = db.query(func.sum(Incident.people_affected)).scalar() or 0
 
@@ -24,7 +27,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     deployed_teams = db.query(RescueTeam).filter(RescueTeam.status == "DEPLOYED").count()
 
     # Alerts stats
-    active_alerts = db.query(Alert).filter(Alert.status == "ACTIVE").count()
+    active_alerts = db.query(Alert).filter(Alert.status.in_(["ACTIVE", "ACKNOWLEDGED"])).count()
 
     # Facilities stats
     total_facilities = db.query(Facility).count()
@@ -41,7 +44,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     # Priority Incidents (top 5 active)
     priority_incidents = (
         db.query(Incident)
-        .filter(Incident.status != "RESOLVED")
+        .filter(Incident.status.notin_(CLOSED_STATES))
         .order_by(
             case(
                 (Incident.severity.in_(["CRITICAL", "critical"]), 1),
@@ -55,10 +58,14 @@ def get_dashboard(db: Session = Depends(get_db)):
     )
 
     # Recent Alerts
-    recent_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(3).all()
+    recent_alerts = (
+        db.query(Alert).filter(Alert.status.in_(["ACTIVE", "ACKNOWLEDGED"])).order_by(Alert.created_at.desc()).limit(3).all()
+    )
 
-    # Real-time baseline ML prediction (using recent average station telemetry: 25 mm rain, 3.2 m water level)
-    forecast = flood_ml_service.predict(rainfall_mm=22.5, water_level_m=3.1)
+    # There is no live sensor feed. This is the model's output for a fixed example scenario,
+    # so the dashboard labels it as an example and shows the inputs used.
+    example_inputs = {"rainfall_mm": 22.5, "water_level_m": 3.1, "humidity_pct": 80.0, "temperature_c": 28.0}
+    forecast = {**flood_ml_service.predict(**example_inputs), "is_example_scenario": True, "scenario_inputs": example_inputs}
 
     return {
         "region": "Bengaluru Urban & Rural, Karnataka",

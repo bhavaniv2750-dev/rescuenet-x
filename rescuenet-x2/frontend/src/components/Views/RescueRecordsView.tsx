@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { RescueRecord } from '../../api/types';
 import { Award, Plus, Download, HeartHandshake } from 'lucide-react';
@@ -55,7 +56,7 @@ export const RescueRecordsView: React.FC = () => {
       setShowAddModal(false);
       fetchRecords();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -63,7 +64,7 @@ export const RescueRecordsView: React.FC = () => {
 
   const handleExportCSV = async () => {
     if (records.length === 0) {
-      alert('No rescue mission records available to export.');
+      toast.error('No rescue mission records available to export.');
       return;
     }
 

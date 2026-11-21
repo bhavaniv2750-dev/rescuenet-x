@@ -1,0 +1,122 @@
+{
+ "model": "CLIP ViT-B/32 zero-shot flood classifier + SegFormer-B0 ADE20K segmentation, ONNX Runtime CPU",
+ "threshold": "CLIP flood probability >= 0.5 (SegFormer-only comparison: water coverage >= 5%)",
+ "project_flood_folder": {
+  "images": 809,
+  "flagged_flood": 803,
+  "flagged_pct": 99.3,
+  "segformer_only_flagged_pct": 76.6,
+  "median_water_pct": 33.8,
+  "with_people_in_water": 255,
+  "with_vehicles_in_water": 206,
+  "suggested_severity": {
+   "CRITICAL": 163,
+   "MODERATE": 324,
+   "HIGH": 316,
+   "LOW": 6
+  },
+  "median_inference_ms": 186.3
+ },
+ "project_missed_files": [
+  "image_0176.jpg",
+  "image_0186.jpg",
+  "image_0202.jpg",
+  "image_0237.jpg",
+  "image_0371.jpg",
+  "image_0431.jpg"
+ ],
+ "floodit_external": {
+  "flood_images": 5,
+  "non_flood_images": 5,
+  "tp": 5,
+  "fn": 0,
+  "fp": 4,
+  "tn": 1,
+  "accuracy": 0.6,
+  "false_alarms": [
+   "3134701_2359937509.jpg",
+   "4714208_3273007416.jpg",
+   "5008006_4217944037.jpg",
+   "5141377_1931194300.jpg"
+  ]
+ },
+ "non_flood_scenes": {
+  "images": 300,
+  "false_alarms": 22,
+  "false_alarm_pct": 7.3,
+  "segformer_only_false_alarm_pct": 24.3,
+  "by_scene": {
+   "buildings": {
+    "images": 50,
+    "false_alarms": 6,
+    "segformer_only_false_alarms": 4
+   },
+   "forest": {
+    "images": 50,
+    "false_alarms": 0,
+    "segformer_only_false_alarms": 1
+   },
+   "glacier": {
+    "images": 50,
+    "false_alarms": 3,
+    "segformer_only_false_alarms": 14
+   },
+   "mountain": {
+    "images": 50,
+    "false_alarms": 1,
+    "segformer_only_false_alarms": 7
+   },
+   "sea": {
+    "images": 50,
+    "false_alarms": 3,
+    "segformer_only_false_alarms": 47
+   },
+   "street": {
+    "images": 50,
+    "false_alarms": 9,
+    "segformer_only_false_alarms": 0
+   }
+  },
+  "false_alarm_files": [
+   "20140.jpg",
+   "20206.jpg",
+   "20549.jpg",
+   "21203.jpg",
+   "21399.jpg",
+   "23776.jpg",
+   "22465.jpg",
+   "22842.jpg",
+   "22942.jpg",
+   "23429.jpg",
+   "20371.jpg",
+   "20694.jpg",
+   "22832.jpg",
+   "20152.jpg",
+   "20653.jpg",
+   "20962.jpg",
+   "22632.jpg",
+   "22778.jpg",
+   "22826.jpg",
+   "23033.jpg",
+   "23211.jpg",
+   "23269.jpg"
+  ]
+ },
+ "combined_project_vs_non_flood": {
+  "tp": 803,
+  "fn": 6,
+  "fp": 22,
+  "tn": 278,
+  "accuracy": 0.975,
+  "precision": 0.973,
+  "recall": 0.993,
+  "f1": 0.983,
+  "specificity": 0.927
+ },
+ "seconds": 222.9,
+ "notes": [
+  "Prompts and threshold were fixed before scoring and not tuned on these photos.",
+  "Non-flood scenes: 50 random test photos each from the Intel Image Classification set (150x150 px).",
+  "FloodIT non-flood photos are flood-related social-media posts (warehouse, responders, rainfall map); only 5 exist publicly."
+ ]
+}

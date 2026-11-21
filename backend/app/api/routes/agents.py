@@ -4,9 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
-from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask
-from app.schemas.domain import SupervisorTaskOut, SupervisorTaskRequest
+from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask, User
+from app.schemas.domain import SupervisorTaskDecision, SupervisorTaskOut, SupervisorTaskRequest
+from app.services import incident_lifecycle as lifecycle
+from app.services.audit import record_audit
 from app.services.geo_service import geo_service
 from app.services.ollama_service import haversine_km, ollama_supervisor_service
 
@@ -58,7 +62,7 @@ AGENTS_ROSTER = [
 ]
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(require_roles(*DEPT))])
 def list_agents():
     health = ollama_supervisor_service.check_health()
     return {
@@ -77,13 +81,13 @@ def list_agents():
     }
 
 
-@router.get("/supervisor/health")
+@router.get("/supervisor/health", dependencies=[Depends(require_roles(*DEPT))])
 def get_supervisor_health():
     """Check connectivity and model availability of local Ollama server."""
     return ollama_supervisor_service.check_health()
 
 
-@router.get("/tasks")
+@router.get("/tasks", dependencies=[Depends(require_roles(*OPS))])
 def list_supervisor_tasks(db: Session = Depends(get_db)):
     tasks = db.query(SupervisorTask).order_by(SupervisorTask.created_at.desc()).all()
     return {
@@ -92,7 +96,7 @@ def list_supervisor_tasks(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED)
+@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
 async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session = Depends(get_db)):
     # 1. Fetch incident or handle prospective / no-incident context
     incident = None
@@ -162,24 +166,92 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
         recommendations=result.recommendations_formatted,
         requires_human_approval=result.enforced_requires_approval,
         approved_by=None if result.enforced_requires_approval else "Automated Agent Policy Guard",
+        incident_id=incident.id if incident else None,
+        suggested_team_id=result.validated_team_id,
+        suggested_facility_id=result.validated_facility_id,
     )
-
     db.add(task)
+    record_audit(db, "supervisor-agent", "TRIAGE_COMPLETED", "task", task_id,
+                 f"model {result.model_name} ({result.model_status}); approval required: {result.enforced_requires_approval}", role="AGENT")
+
+    # Move the incident through the lifecycle. The gate result decides whether a commander must approve.
+    if incident is not None:
+        current = lifecycle.normalize(incident.status)
+        if current in ("VERIFIED", "QUEUED"):
+            lifecycle.transition(db, incident, "TRIAGE_IN_PROGRESS", actor="supervisor-agent", role="AGENT", note=task_id)
+            current = "TRIAGE_IN_PROGRESS"
+        if current == "TRIAGE_IN_PROGRESS" and result.enforced_requires_approval:
+            lifecycle.transition(db, incident, "PENDING_APPROVAL", actor="safety-gate", role="SYSTEM", note=task_id)
+
     db.commit()
     db.refresh(task)
     return SupervisorTaskOut.model_validate(task)
 
 
-@router.post("/tasks/{task_id}/approve", response_model=SupervisorTaskOut)
-def approve_supervisor_task(task_id: str, db: Session = Depends(get_db)):
+def _decider(payload: SupervisorTaskDecision, user) -> SupervisorTaskDecision:
+    """The decision is recorded under the signed-in commander's name."""
+    if isinstance(user, User):
+        return payload.model_copy(update={"commander": f"{user.full_name} ({user.username})"})
+    return payload
+
+
+def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
     task = db.query(SupervisorTask).filter(SupervisorTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    if task.status != "PENDING_APPROVAL":
+        raise HTTPException(status_code=409, detail=f"Task {task_id} is {task.status}, not waiting for approval")
+    return task
 
-    task.status = "COMPLETED"
+
+@router.post("/tasks/{task_id}/approve", response_model=SupervisorTaskOut)
+def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
+                            user: User = Depends(require_roles(*APPROVERS))):
+    """Commander approves the plan. The linked incident is dispatched to the suggested team, if one is free."""
+    payload = _decider(payload, user)
+    task = _get_pending_task(db, task_id)
+    now = datetime.now(timezone.utc)
+    task.status = "APPROVED"
     task.requires_human_approval = False
-    task.approved_by = "Human Commander Authorization (Console OP-01)"
+    task.approved_by = payload.commander
+    task.decision_note = payload.note
+    task.updated_at = now
+    record_audit(db, payload.commander, "TASK_APPROVED", "task", task.id, payload.note, role="COMMANDER")
+
+    if task.incident_id:
+        incident = db.query(Incident).filter(Incident.id == task.incident_id).first()
+        if incident and lifecycle.normalize(incident.status) == "PENDING_APPROVAL":
+            team = None
+            if task.suggested_team_id:
+                team = db.query(RescueTeam).filter(RescueTeam.id == task.suggested_team_id, RescueTeam.status == "AVAILABLE").first()
+            lifecycle.transition(db, incident, "DISPATCHED", actor=payload.commander, role="COMMANDER", note=f"approved {task.id}")
+            if team is not None:
+                incident.assigned_team_id = team.id
+                team.status = "DEPLOYED"
+                record_audit(db, payload.commander, "TEAM_ASSIGNED", "incident", incident.id, team.id, role="COMMANDER")
+
+    db.commit()
+    db.refresh(task)
+    return SupervisorTaskOut.model_validate(task)
+
+
+@router.post("/tasks/{task_id}/decline", response_model=SupervisorTaskOut)
+def decline_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
+                            user: User = Depends(require_roles(*APPROVERS))):
+    """Commander declines the plan. The linked incident goes to REJECTED and can be re-queued."""
+    payload = _decider(payload, user)
+    task = _get_pending_task(db, task_id)
+    task.status = "DECLINED"
+    task.requires_human_approval = False
+    task.approved_by = None
+    task.decision_note = payload.note
     task.updated_at = datetime.now(timezone.utc)
+    record_audit(db, payload.commander, "TASK_DECLINED", "task", task.id, payload.note, role="COMMANDER")
+
+    if task.incident_id:
+        incident = db.query(Incident).filter(Incident.id == task.incident_id).first()
+        if incident and lifecycle.normalize(incident.status) == "PENDING_APPROVAL":
+            lifecycle.transition(db, incident, "REJECTED", actor=payload.commander, role="COMMANDER", note=f"declined {task.id}")
 
     db.commit()
     db.refresh(task)

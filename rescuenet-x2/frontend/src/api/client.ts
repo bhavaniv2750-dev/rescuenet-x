@@ -15,14 +15,57 @@ import type {
 // Default to backend port 8000
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
+/** Turn a server path such as /api/datasets/images/file/x.jpg into a full URL on the API host. */
+export function assetUrl(path?: string | null): string {
+  if (!path) return '';
+  if (/^(https?:|data:|blob:)/.test(path)) return path;
+  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${path}`;
+}
+
+// ---- session token (sessionStorage by default, localStorage when "remember me" is ticked) ----
+const TOKEN_KEY = 'rescuenet.token';
+
+export const tokenStore = {
+  get(): string | null {
+    try {
+      return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set(token: string, remember: boolean) {
+    try {
+      this.clear();
+      (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
+    } catch {
+      /* storage blocked: the session lasts until the page reloads */
+    }
+  },
+  clear() {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+export const UNAUTHORIZED_EVENT = 'rescuenet:unauthorized';
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
+  const token = tokenStore.get();
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(url, { ...options, headers });
+  if (response.status === 401 && token && !endpoint.startsWith('/auth/login')) {
+    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  }
   if (!response.ok) {
     const errorBody = await response.text();
     let detail = response.statusText;
@@ -32,13 +75,43 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       detail = errorBody || detail;
     }
-    throw new Error(`API Error ${response.status}: ${detail}`);
+    throw new ApiError(response.status, typeof detail === 'string' ? detail : JSON.stringify(detail));
   }
 
   return response.json();
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Link to the CAP 1.2 XML for an alert (opens in a new tab, no sign-in needed). */
+export const capUrl = (alertId: string) => `${API_BASE_URL}/alerts/${encodeURIComponent(alertId)}/cap`;
+
 export const api = {
+  // ---- authentication ----
+  getPortals: () => request<import('./types').PortalInfo>('/auth/portals'),
+  login: (portal: string, username: string, password: string) =>
+    request<import('./types').TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password }) }),
+  register: (payload: import('./types').RegisterPayload) =>
+    request<import('./types').TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+  getMe: () => request<import('./types').AuthUser>('/auth/me'),
+  changePassword: (current_password: string, new_password: string) =>
+    request<{ message: string }>('/auth/me/password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
+  getUsers: () => request<{ items: import('./types').AuthUser[]; count: number; roles: string[] }>('/auth/users'),
+  createUser: (payload: Record<string, unknown>) =>
+    request<import('./types').AuthUser>('/auth/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUser: (id: number, payload: Record<string, unknown>) =>
+    request<import('./types').AuthUser>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getAuditLog: (limit = 100, action?: string) =>
+    request<{ items: import('./types').AuditEntry[]; count: number }>(`/auth/audit?limit=${limit}${action ? `&action=${action}` : ''}`),
+  getDiagnostics: () => request<Record<string, any>>('/diagnostics/'),
+  getMyIncidents: () => request<{ items: Incident[]; count: number }>('/incidents/mine'),
+
   // Health
   checkHealth: () => request<any>('/health'),
 
@@ -95,10 +168,30 @@ export const api = {
     image_url?: string | null;
     reporter_name?: string | null;
     reporter_contact?: string | null;
+    reported_water_depth?: string | null;
   }) => request<Incident>('/incidents/', { method: 'POST', body: JSON.stringify(payload) }),
 
   updateIncident: (id: string, payload: { status?: string; assigned_team_id?: string; severity?: string; image_url?: string | null }) =>
     request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  changeIncidentState: (id: string, toStatus: string, extra: { actor?: string; note?: string; duplicate_of?: string } = {}) =>
+    request<Incident>(`/incidents/${id}/state`, { method: 'POST', body: JSON.stringify({ to_status: toStatus, ...extra }) }),
+
+  getIncidentHistory: (id: string) =>
+    request<{ items: import('./types').AuditEntry[]; count: number }>(`/incidents/${id}/history`),
+
+  getIncidentLifecycle: () =>
+    request<{ states: string[]; transitions: Record<string, string[]>; terminal_states: string[] }>('/incidents/lifecycle'),
+
+  getBeacons: () => request<{ items: import('./types').Beacon[]; count: number }>('/incidents/beacons'),
+
+  analyzeIncidentPhoto: (id: string) =>
+    request<Incident>(`/incidents/${id}/analyze-photo`, { method: 'POST' }),
+
+  analyzeDatasetImage: (filename: string) =>
+    request<import('./types').VisionAnalysis>(`/vision/dataset/${encodeURIComponent(filename)}`),
+
+  getVisionStatus: () => request<{ ready: boolean; loaded: boolean; weights_present: boolean; runtime_installed: boolean; last_error?: string | null }>('/vision/status'),
 
   deleteIncident: (id: string) => request<{ message: string }>(`/incidents/${id}`, { method: 'DELETE' }),
 
@@ -152,6 +245,14 @@ export const api = {
   registerVolunteer: (payload: { name: string; phone: string; email: string; skills: string; area: string }) =>
     request<Volunteer>('/volunteers/', { method: 'POST', body: JSON.stringify(payload) }),
 
+  assignVolunteer: (volunteerId: string, incidentId: string) =>
+    request<Volunteer>(`/volunteers/${volunteerId}/assign`, { method: 'POST', body: JSON.stringify({ incident_id: incidentId }) }),
+
+  releaseVolunteer: (volunteerId: string) => request<Volunteer>(`/volunteers/${volunteerId}/release`, { method: 'POST' }),
+
+  updateFacilityOccupancy: (facilityId: string, current_occupancy: number) =>
+    request<Facility>(`/facilities/${facilityId}/occupancy`, { method: 'PATCH', body: JSON.stringify({ current_occupancy }) }),
+
   updateVolunteer: (volunteerId: string, payload: { is_verified?: boolean; status?: string }) =>
     request<Volunteer>(`/volunteers/${volunteerId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 
@@ -194,8 +295,11 @@ export const api = {
   executeSupervisorTriage: (payload: { task_type: string; incident_id?: string; area?: string; instruction?: string }) =>
     request<SupervisorTask>('/agents/supervisor/triage', { method: 'POST', body: JSON.stringify(payload) }),
 
-  approveSupervisorTask: (taskId: string) =>
-    request<SupervisorTask>(`/agents/tasks/${taskId}/approve`, { method: 'POST' }),
+  approveSupervisorTask: (taskId: string, note?: string) =>
+    request<SupervisorTask>(`/agents/tasks/${taskId}/approve`, { method: 'POST', body: JSON.stringify({ note }) }),
+
+  declineSupervisorTask: (taskId: string, note?: string) =>
+    request<SupervisorTask>(`/agents/tasks/${taskId}/decline`, { method: 'POST', body: JSON.stringify({ note }) }),
 
   // Datasets & Models
   getDatasets: () => request<{ count: number; items: DatasetItem[]; storage_root: string; total_records_ingested: number; flood_images_verified: number; flood_images_unique?: number; duplicate_images_count?: number }>('/datasets/inventory'),

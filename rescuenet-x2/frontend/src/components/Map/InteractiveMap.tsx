@@ -511,7 +511,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             checked={showAlerts}
             onChange={(e) => setShowAlerts(e.target.checked)}
           />
-          <span style={{ color: '#f97316' }}>◎</span> Alerts ({alerts.filter((a) => a.status === 'ACTIVE').length})
+          <span style={{ color: '#f97316' }}>◎</span> Alerts ({alerts.filter((a) => a.status !== 'RESOLVED').length})
         </label>
       </div>
 

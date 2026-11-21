@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Incident, SupervisorTask } from '../../api/types';
 import {
@@ -15,6 +16,8 @@ import {
 
 interface SupervisorViewProps {
   incidents: Incident[];
+  /** Only commanders and administrators can approve or decline a dispatch. */
+  canApprove?: boolean;
 }
 
 type ExecutionState = 'idle' | 'running' | 'completed' | 'failed' | 'ollama_unavailable' | 'awaiting_approval';
@@ -28,7 +31,7 @@ interface OllamaInfo {
   error?: string | null;
 }
 
-export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => {
+export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canApprove = false }) => {
   const [tasks, setTasks] = useState<SupervisorTask[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [ollamaInfo, setOllamaInfo] = useState<OllamaInfo | null>(null);
@@ -91,14 +94,29 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
     }
   };
 
-  const handleApprove = async (taskId: string) => {
+  const [decisionNote, setDecisionNote] = useState('');
+
+  const handleDecline = async (taskId: string) => {
     try {
-      const updated = await api.approveSupervisorTask(taskId);
+      const updated = await api.declineSupervisorTask(taskId, decisionNote.trim() || undefined);
+      setDecisionNote('');
       setLatestTask(updated);
       setExecState('completed');
       await fetchTasksAndAgents();
     } catch (err: any) {
-      alert(`Approval failed: ${err.message}`);
+      toast.error(`Decline failed: ${cleanMessage(err)}`);
+    }
+  };
+
+  const handleApprove = async (taskId: string) => {
+    try {
+      const updated = await api.approveSupervisorTask(taskId, decisionNote.trim() || undefined);
+      setDecisionNote('');
+      setLatestTask(updated);
+      setExecState('completed');
+      await fetchTasksAndAgents();
+    } catch (err: any) {
+      toast.error(`Approval failed: ${cleanMessage(err)}`);
     }
   };
 
@@ -106,10 +124,11 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
     <div className="supervisor-container">
       <div className="view-header">
         <div>
-          <h2>AI Supervisor & Autonomous Multi-Agent Orchestration</h2>
+          <h2>AI Supervisor & Multi-Agent Orchestration</h2>
           <p>
             Local-first LLM reasoning (Ollama Qwen 4B Instruct) orchestrating specialized telemetry,
-            geospatial intelligence, squad routing, and medical logistics under strict commander authorization.
+            geospatial intelligence, squad routing, and medical logistics. The model only advises: a deterministic rule
+            (five or more victims, or HIGH/CRITICAL severity) forces commander approval before dispatch.
           </p>
         </div>
       </div>
@@ -155,7 +174,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
         <div className="panel trigger-card">
           <div className="panel-title-bar">
             <div>
-              <h3>Execute Autonomous Triage Workflow</h3>
+              <h3>Run Supervisor Triage</h3>
               <p>Dispatch the multi-agent swarm to evaluate an incident</p>
             </div>
             <Bot className="text-cyan" size={20} />
@@ -235,7 +254,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                   <RefreshCw className="animate-spin" size={16} /> Running Ollama Inference
                 </div>
                 <div style={{ marginTop: '4px', fontSize: '12px', color: '#a5f3fc' }}>
-                  Streaming verified incident geometry, closest squads, and nearest IndoFloods river gauge to Qwen 4B Instruct...
+                  Sending incident location, nearest available teams and the nearest IndoFloods river gauge to the local Qwen 4B model...
                 </div>
               </div>
             )}
@@ -340,7 +359,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                 <span className="font-mono text-cyan font-bold">{latestTask.task_type}</span>
                 <span
                   className={`status-pill ${
-                    latestTask.status === 'COMPLETED' ? 'pill-active' : 'pill-critical'
+                    ['COMPLETED', 'APPROVED'].includes(latestTask.status) ? 'pill-active' : latestTask.status === 'DECLINED' ? 'pill-muted' : 'pill-critical'
                   }`}
                 >
                   {latestTask.status}
@@ -370,16 +389,44 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                       <strong>MANDATORY HUMAN AUTHORIZATION REQUIRED</strong>
                       <p>
                         High-consequence decision involves life safety & evacuation dispatch.
-                        Autonomous dispatch is gated until human commander authorization.
+                        Dispatch is blocked until a commander approves.
                       </p>
                     </div>
                   </div>
-                  <button
-                    className="btn-primary btn-block"
-                    onClick={() => handleApprove(latestTask.id)}
-                  >
-                    <ShieldCheck size={16} /> Authorize Squad Dispatch & Issue Geotargeted Warning
-                  </button>
+                  {!canApprove && (
+                    <div className="form-notice form-notice-info">
+                      Waiting for a commander. Operators can run triage but cannot approve a dispatch.
+                    </div>
+                  )}
+                  {canApprove && (
+                    <textarea
+                      className="note-input"
+                      placeholder="Note for the audit log (optional, recommended when declining)"
+                      value={decisionNote}
+                      onChange={(e) => setDecisionNote(e.target.value)}
+                      rows={2}
+                      maxLength={500}
+                    />
+                  )}
+                  <div style={{ display: canApprove ? 'flex' : 'none', gap: '8px' }}>
+                    <button
+                      className="btn-primary btn-block"
+                      onClick={() => handleApprove(latestTask.id)}
+                    >
+                      <ShieldCheck size={16} /> Approve & Dispatch
+                      {latestTask.suggested_team_id ? ` ${latestTask.suggested_team_id}` : ''}
+                    </button>
+                    <button className="btn-secondary btn-block" onClick={() => handleDecline(latestTask.id)}>
+                      Decline Plan
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {latestTask.status === 'DECLINED' && (
+                <div className="approved-dossier-note">
+                  ✕ Plan declined by the commander{latestTask.decision_note ? `: ${latestTask.decision_note}` : ''}.
+                  {latestTask.incident_id ? ` Incident ${latestTask.incident_id} moved to REJECTED and can be re-queued.` : ''}
                 </div>
               )}
 
@@ -402,7 +449,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
       <div className="panel audit-table-panel" style={{ marginTop: '20px' }}>
         <div className="panel-title-bar">
           <div>
-            <h3>Autonomous Task Execution Audit Trail</h3>
+            <h3>Supervisor Task History</h3>
             <p>Persistent audit logging stored in SQLite</p>
           </div>
         </div>
@@ -438,7 +485,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                   <td>
                     <span
                       className={`status-pill ${
-                        t.status === 'COMPLETED' ? 'pill-active' : 'pill-critical'
+                        ['COMPLETED', 'APPROVED'].includes(t.status) ? 'pill-active' : t.status === 'DECLINED' ? 'pill-muted' : 'pill-critical'
                       }`}
                     >
                       {t.status}

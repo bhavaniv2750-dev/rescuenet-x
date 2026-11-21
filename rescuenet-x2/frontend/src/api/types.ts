@@ -1,3 +1,10 @@
+export type IncidentStatus =
+  | 'REPORTED' | 'UNDER_VERIFICATION' | 'VERIFIED' | 'QUEUED' | 'TRIAGE_IN_PROGRESS'
+  | 'PENDING_APPROVAL' | 'DISPATCHED' | 'IN_TRANSIT' | 'ON_SCENE' | 'RESOLVED'
+  | 'DUPLICATE' | 'REJECTED' | 'CANCELLED';
+
+export type DataLabel = 'OBSERVED' | 'PREDICTED' | 'SIMULATED';
+
 export interface Incident {
   id: string;
   title: string;
@@ -7,8 +14,15 @@ export interface Incident {
   longitude: float;
   severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
   people_affected: number;
-  status: 'REPORTED' | 'VERIFIED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED';
+  status: IncidentStatus;
   source: string;
+  data_label?: DataLabel | string;
+  beacon_id?: string | null;
+  location_method?: string | null;
+  verified_by?: string | null;
+  duplicate_of?: string | null;
+  reported_water_depth?: WaterDepth | null;
+  photo_analysis?: Partial<VisionAnalysis> | null;
   incident_type?: string;
   image_url?: string | null;
   reporter_name?: string | null;
@@ -45,6 +59,8 @@ export interface Volunteer {
   area: string;
   is_verified: boolean;
   status: 'AVAILABLE' | 'ASSIGNED' | 'STANDBY';
+  assigned_incident_id?: string | null;
+  verified_by?: string | null;
   registered_at: string;
 }
 
@@ -60,6 +76,10 @@ export interface Alert {
   status: 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
   delivery_channel: string;
   acknowledged_count: number;
+  acknowledged_by?: string | null;
+  escalation_level?: number;
+  escalated_at?: string | null;
+  data_label?: string;
   created_at: string;
   resolved_at?: string | null;
 }
@@ -67,7 +87,7 @@ export interface Alert {
 export interface Facility {
   id: string;
   name: string;
-  facility_type: 'HOSPITAL' | 'SHELTER' | 'RELIEF_CAMP' | 'RESCUE_HQ';
+  facility_type: 'HOSPITAL' | 'SHELTER' | 'RELIEF_CAMP' | 'RESCUE_HQ' | 'POLICE_STATION' | 'FIRE_STATION' | 'SCHOOL';
   address: string;
   latitude: number;
   longitude: number;
@@ -75,6 +95,7 @@ export interface Facility {
   current_occupancy: number;
   status: 'OPERATIONAL' | 'NEAR_CAPACITY' | 'FULL';
   contact: string;
+  data_label?: string;
   distance_km?: number;
 }
 
@@ -97,13 +118,17 @@ export interface SupervisorTask {
   id: string;
   task_type: string;
   title: string;
-  status: 'COMPLETED' | 'PENDING_APPROVAL' | 'EXECUTING' | 'FAILED';
+  status: 'COMPLETED' | 'PENDING_APPROVAL' | 'APPROVED' | 'DECLINED' | 'EXECUTING' | 'FAILED';
   agent_flow: string;
   input_summary: string;
   findings: string;
   recommendations: string;
   requires_human_approval: boolean;
   approved_by?: string | null;
+  incident_id?: string | null;
+  suggested_team_id?: string | null;
+  suggested_facility_id?: string | null;
+  decision_note?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -142,19 +167,29 @@ export interface FloodPredictionResult {
     chronological_holdout_accuracy?: number;
     chronological_confusion_matrix?: number[][];
     class_distribution?: {
-      total: number;
-      negative_count: number;
-      positive_count: number;
-      positive_ratio: number;
+      total_records: number;
+      non_flood_class_0: number;
+      flood_class_1: number;
+      flood_prevalence_pct: number;
     };
-    validation_audit?: {
-      separation_threshold: string;
-      dataset_origin: string;
-      horizon_nature: string;
-    };
+    validation_audit?: Record<string, string>;
+    evaluation_suite?: Record<string, EvaluationResult>;
+    model_inputs?: string[];
     feature_importances: Record<string, number>;
   };
   advisory: string;
+  gauge_rule_triggered?: boolean;
+  is_example_scenario?: boolean;
+  scenario_inputs?: { rainfall_mm: number; water_level_m: number; humidity_pct: number; temperature_c: number };
+}
+
+export interface EvaluationResult {
+  description: string;
+  accuracy_mean: number;
+  accuracy_std: number;
+  f1_mean: number;
+  recall_mean: number;
+  roc_auc_mean: number;
 }
 
 export interface RiverGauge {
@@ -242,6 +277,8 @@ export interface ModelItem {
   accuracy: number | null;
   roc_auc: number | null;
   cv_5fold_accuracy_mean?: number | null;
+  cv_5fold_accuracy_std?: number | null;
+  f1_score?: number | null;
   confusion_matrix?: number[][] | null;
   class_distribution?: {
     total: number;
@@ -364,4 +401,89 @@ export interface PaginatedImagesResponse {
     model_status: string;
   };
   images: ImageItem[];
+}
+
+export interface AuditEntry {
+  id: number;
+  actor: string;
+  role: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details?: string | null;
+  created_at: string;
+}
+
+export interface Beacon {
+  beacon_id: string;
+  hotspot: string;
+  latitude: number;
+  longitude: number;
+  last_battery_pct?: number | null;
+  last_hops?: number | null;
+  last_seen?: string | null;
+  data_label: string;
+}
+
+export interface VisionAnalysis {
+  data_label: string;
+  model: string;
+  flood_detected: boolean;
+  flood_probability: number;
+  closest_description: string;
+  water_coverage_pct: number;
+  water_coverage_lower_half_pct?: number;
+  people_detected: number;
+  people_in_water: number;
+  vehicles_detected: number;
+  vehicles_in_water: number;
+  boats_detected: number;
+  suggested_severity: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  inference_ms: number;
+  caveats?: string[];
+  overlay_png_base64?: string;
+  filename?: string;
+}
+
+export type WaterDepth = 'ANKLE' | 'KNEE' | 'WAIST' | 'CHEST_OR_DEEPER' | 'UNKNOWN';
+
+export type Role = 'ADMIN' | 'COMMANDER' | 'OPERATOR' | 'RESCUE_OFFICER' | 'VOLUNTEER' | 'CITIZEN';
+export type PortalId = 'public' | 'operations' | 'admin';
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: Role;
+  portal: PortalId | '';
+  team_id?: string | null;
+  volunteer_id?: string | null;
+  volunteer_verified?: boolean | null;
+  is_active: boolean;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export interface PortalInfo {
+  demo_mode: boolean;
+  demo_accounts: { portal: PortalId; username: string; role: Role; label: string }[];
+  demo_password: string | null;
+  portals: { id: PortalId; name: string; roles: Role[]; self_signup: boolean }[];
+}
+
+export interface RegisterPayload {
+  role: 'CITIZEN' | 'VOLUNTEER';
+  username: string;
+  full_name: string;
+  password: string;
+  phone: string;
+  email?: string;
+  skills?: string;
+  area?: string;
 }

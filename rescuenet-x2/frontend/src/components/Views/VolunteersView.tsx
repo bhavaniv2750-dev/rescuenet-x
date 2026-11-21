@@ -1,14 +1,46 @@
 import React, { useState } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
-import type { Volunteer } from '../../api/types';
+import type { Incident, Volunteer } from '../../api/types';
 import { Shield, Plus, CheckCircle, XCircle } from 'lucide-react';
 
 interface VolunteersViewProps {
   volunteers: Volunteer[];
+  /** Used to pick an incident to send a volunteer to. */
+  incidents?: Incident[];
   onRefresh: () => void;
 }
 
-export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRefresh }) => {
+const ACTIVE_RESCUE = ['DISPATCHED', 'IN_TRANSIT', 'ON_SCENE'];
+
+export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, incidents = [], onRefresh }) => {
+  const [assigning, setAssigning] = useState<Volunteer | null>(null);
+  const [assignTo, setAssignTo] = useState('');
+  const activeIncidents = incidents.filter((i) => ACTIVE_RESCUE.includes(i.status));
+
+  const handleAssign = async () => {
+    if (!assigning || !assignTo) return;
+    try {
+      await api.assignVolunteer(assigning.id, assignTo);
+      toast.success(`${assigning.name} assigned to ${assignTo}.`);
+      setAssigning(null);
+      setAssignTo('');
+      onRefresh();
+    } catch (err) {
+      toast.error(cleanMessage(err));
+    }
+  };
+
+  const handleRelease = async (v: Volunteer) => {
+    try {
+      await api.releaseVolunteer(v.id);
+      toast.success(`${v.name} is available again.`);
+      onRefresh();
+    } catch (err) {
+      toast.error(cleanMessage(err));
+    }
+  };
+
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -31,7 +63,7 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
       setNotice('Volunteer registered successfully! Status is pending verification.');
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -43,7 +75,7 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
       setNotice(`Updated verification for ${v.name}: ${!v.is_verified ? 'VERIFIED' : 'UNVERIFIED'}`);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -137,14 +169,29 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
                     <span className={`status-pill ${vol.status === 'AVAILABLE' ? 'pill-active' : 'pill-deployed'}`}>
                       {vol.status}
                     </span>
+                    {vol.assigned_incident_id && <div className="font-mono text-xs text-cyan">{vol.assigned_incident_id}</div>}
                   </td>
                   <td>
-                    <button
-                      className="btn-outline btn-xs"
-                      onClick={() => handleToggleVerified(vol)}
-                    >
-                      {vol.is_verified ? 'Revoke Verify' : 'Grant Verified ✓'}
-                    </button>
+                    <div className="action-button-group">
+                      <button className="btn-outline btn-xs" onClick={() => handleToggleVerified(vol)} disabled={!!vol.assigned_incident_id}>
+                        {vol.is_verified ? 'Revoke Verify' : 'Grant Verified ✓'}
+                      </button>
+                      {vol.assigned_incident_id ? (
+                        <button className="btn-secondary btn-xs" onClick={() => handleRelease(vol)}>
+                          Release
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-secondary btn-xs"
+                          disabled={!vol.is_verified || vol.status !== 'AVAILABLE'}
+                          title={!vol.is_verified ? 'Verify this volunteer before assigning' : vol.status !== 'AVAILABLE' ? `Volunteer is ${vol.status}` : ''}
+                          onClick={() => { setAssigning(vol); setAssignTo(activeIncidents[0]?.id || ''); }}
+                        >
+                          Assign
+                        </button>
+                      )}
+                    </div>
+                    {vol.is_verified && vol.verified_by && <div className="text-xs text-muted">by {vol.verified_by}</div>}
                   </td>
                 </tr>
               ))}
@@ -152,6 +199,39 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
           </table>
         </div>
       </div>
+
+      {assigning && (
+        <div className="modal-backdrop" onClick={() => setAssigning(null)}>
+          <div className="modal-box" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Assign {assigning.name}</h3>
+              <button className="icon-btn" onClick={() => setAssigning(null)} aria-label="Close">✕</button>
+            </div>
+            <div style={{ padding: 16 }} className="login-form">
+              {activeIncidents.length === 0 ? (
+                <div className="form-notice form-notice-info">
+                  No incident is dispatched yet. Volunteers join rescues that are dispatched, in transit or on scene.
+                </div>
+              ) : (
+                <label>
+                  Incident
+                  <select className="select-input" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+                    {activeIncidents.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.id}: {i.area} ({i.status.replace(/_/g, ' ')})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <div className="modal-actions">
+                <button className="btn-secondary" onClick={() => setAssigning(null)}>Cancel</button>
+                <button className="btn-primary" onClick={handleAssign} disabled={!assignTo}>Assign volunteer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Register Volunteer */}
       {showRegisterModal && (

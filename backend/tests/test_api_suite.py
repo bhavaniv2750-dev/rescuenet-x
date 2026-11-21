@@ -6,8 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
 from app.main import app
+from tests.conftest import sign_in
 
-client = TestClient(app)
+client = sign_in(TestClient(app), "commander")
 
 def test_full_system():
     print("=== 1. Health Endpoint ===")
@@ -81,9 +82,9 @@ def test_full_system():
         "title": "Flash Surge Alert Test",
         "message": "Water level spike near Bellandur",
         "severity": "CRITICAL",
-        "area": "Bellandur Basin",
-        "latitude": 12.935,
-        "longitude": 77.678,
+        "area": "Whitefield Basin",
+        "latitude": 12.9698,
+        "longitude": 77.7500,
         "radius_km": 3.0
     })
     assert r.status_code == 201
@@ -91,7 +92,7 @@ def test_full_system():
 
     r = client.post(f"/api/alerts/{alert_id}/acknowledge")
     assert r.status_code == 200
-    assert r.json()["acknowledged_count"] == 1
+    assert r.json()["status"] == "ACKNOWLEDGED"  # the commander acknowledged it
     print(f" Alerts OK: Created & Acknowledged {alert_id}")
 
     print("\n=== 9. Rescue Teams & Assignment ===")
@@ -99,11 +100,14 @@ def test_full_system():
     assert r.status_code == 200
     teams = r.json()
     assert teams["count"] > 0
-    team_id = teams["items"][0]["id"]
+    team_id = next(t["id"] for t in teams["items"] if t["status"] == "AVAILABLE")
 
+    # HIGH severity with 5 people meets the approval rule, so direct assignment must be refused.
     r = client.post(f"/api/teams/{team_id}/assign", json={"incident_id": created_inc["id"]})
+    assert r.status_code == 409
+    r = client.post(f"/api/incidents/{created_inc['id']}/state", json={"to_status": "VERIFIED"})
     assert r.status_code == 200
-    print(f" Team Assignment OK: Team {team_id} assigned to {created_inc['id']}")
+    print(f" Safety gate OK: direct dispatch of {created_inc['id']} refused")
 
     print("\n=== 10. Facilities & Distance Calculation ===")
     r = client.get("/api/facilities/?lat=12.9716&lon=77.5946")
@@ -142,7 +146,9 @@ def test_full_system():
     if task["requires_human_approval"]:
         r_appr = client.post(f"/api/agents/tasks/{task['id']}/approve")
         assert r_appr.status_code == 200
-        assert r_appr.json()["status"] == "COMPLETED"
+        assert r_appr.json()["status"] == "APPROVED"
+        r_inc = client.get(f"/api/incidents/{created_inc['id']}")
+        assert r_inc.json()["status"] == "DISPATCHED"
         print("   Human Approval Gatekeeper Verified!")
 
     print("\n=== 14. Image Upload & Static Retrieval ===")

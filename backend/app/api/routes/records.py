@@ -4,13 +4,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
 from app.models.entities import RescueRecord
 from app.schemas.domain import RescueRecordCreate, RescueRecordOut
 
 router = APIRouter()
 
-@router.get("/export/csv")
+@router.get("/export/csv", dependencies=[Depends(require_roles(*DEPT))])
 def export_records_csv(db: Session = Depends(get_db)):
     records = db.query(RescueRecord).order_by(RescueRecord.completed_at.desc()).all()
     
@@ -61,7 +63,7 @@ def export_records_csv(db: Session = Depends(get_db)):
         },
     )
 
-@router.get("/", response_model=dict)
+@router.get("/", response_model=dict, dependencies=[Depends(require_roles(*DEPT))])
 def list_records(db: Session = Depends(get_db)):
     records = db.query(RescueRecord).order_by(RescueRecord.completed_at.desc()).all()
     return {
@@ -69,7 +71,7 @@ def list_records(db: Session = Depends(get_db)):
         "count": len(records),
     }
 
-@router.get("/summary")
+@router.get("/summary", dependencies=[Depends(require_roles(*DEPT))])
 def get_records_summary(db: Session = Depends(get_db)):
     totals = db.query(
         func.sum(RescueRecord.people_rescued).label("rescued"),
@@ -90,7 +92,7 @@ def get_records_summary(db: Session = Depends(get_db)):
         "total_minor_injuries": int(totals.minor_injuries or 0),
     }
 
-@router.post("/", response_model=RescueRecordOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RescueRecordOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*DEPT))])
 def create_record(payload: RescueRecordCreate, db: Session = Depends(get_db)):
     count = db.query(RescueRecord).count()
     new_id = f"REC-2026-{count + 3:03d}"

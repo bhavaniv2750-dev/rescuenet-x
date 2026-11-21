@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../api/client';
+import { api, assetUrl } from '../../api/client';
+import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
 import type {
   DatasetItem,
   ModelItem,
   ImageItem,
   ImageInspectionResult,
+  VisionAnalysis,
   ImagePreprocessingResult,
   PaginatedImagesResponse,
 } from '../../api/types';
@@ -49,6 +51,9 @@ export const DatasetsView: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
   const [inspectionData, setInspectionData] = useState<ImageInspectionResult | null>(null);
   const [isLoadingInspection, setIsLoadingInspection] = useState<boolean>(false);
+  const [visionResult, setVisionResult] = useState<VisionAnalysis | null>(null);
+  const [visionError, setVisionError] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [preprocessingData, setPreprocessingData] = useState<ImagePreprocessingResult | null>(null);
   const [isPreprocessing, setIsPreprocessing] = useState<boolean>(false);
 
@@ -127,6 +132,8 @@ export const DatasetsView: React.FC = () => {
     setSelectedImage(img);
     setIsLoadingInspection(true);
     setInspectionData(null);
+    setVisionResult(null);
+    setVisionError(null);
     setPreprocessingData(null);
     try {
       const data = await api.inspectImage(img.filename);
@@ -152,7 +159,22 @@ export const DatasetsView: React.FC = () => {
     }
   };
 
+  const handleAnalyzeFlood = async () => {
+    if (!selectedImage) return;
+    setIsAnalyzing(true);
+    setVisionError(null);
+    try {
+      setVisionResult(await api.analyzeDatasetImage(selectedImage.filename));
+    } catch (err: any) {
+      setVisionError(err.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const closeInspectionModal = () => {
+    setVisionResult(null);
+    setVisionError(null);
     setSelectedImage(null);
     setInspectionData(null);
     setPreprocessingData(null);
@@ -256,7 +278,7 @@ export const DatasetsView: React.FC = () => {
                   {m.cv_5fold_accuracy_mean !== undefined && m.cv_5fold_accuracy_mean !== null && (
                     <div className="model-meta-row">
                       <span>5-Fold Stratified CV:</span>
-                      <strong className="font-mono text-cyan">{(m.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±0.0%)</strong>
+                      <strong className="font-mono text-cyan">{(m.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±{((m.cv_5fold_accuracy_std ?? 0) * 100).toFixed(1)}%)</strong>
                     </div>
                   )}
                   {m.confusion_matrix && (
@@ -345,7 +367,7 @@ export const DatasetsView: React.FC = () => {
             </h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
               Verified repository of <strong>{verifiedImgCount} field & remote sensing flood disaster images</strong> ({uniqueImgCount} unique files, {duplicateCount} duplicate pair flagged) stored in the{' '}
-              <code>flood/</code> directory. Real-time serving, pagination, duplicate detection, and computer vision preprocessing.
+              <code>flood/</code> directory. Image serving, pagination, duplicate detection, and computer vision preprocessing.
             </p>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -507,7 +529,7 @@ export const DatasetsView: React.FC = () => {
                     </div>
                   ) : (
                     <img
-                      src={img.url}
+                      src={assetUrl(img.url)}
                       alt={img.filename}
                       className="image-card-thumb"
                       loading="lazy"
@@ -623,12 +645,26 @@ export const DatasetsView: React.FC = () => {
 
             <div className="image-modal-body">
               {/* Left Column: Full Image Preview */}
-              <div className="modal-image-preview-col">
+              <div className="modal-image-preview-col" style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflowY: 'auto' }}>
                 <img
-                  src={selectedImage.url}
+                  src={assetUrl(selectedImage.url)}
                   alt={selectedImage.filename}
                   className="modal-full-image"
                 />
+                <button
+                  className="btn-primary"
+                  style={{ marginTop: '10px', width: '100%' }}
+                  onClick={handleAnalyzeFlood}
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? 'Analysing photo…' : 'Analyse Flood Photo (AI)'}
+                </button>
+                {visionError && <div className="text-xs text-orange" style={{ marginTop: '6px' }}>{visionError}</div>}
+                {visionResult && (
+                  <div style={{ marginTop: '10px' }}>
+                    <FloodPhotoAnalysis result={visionResult} />
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Technical Inspection Metadata */}
@@ -710,8 +746,11 @@ export const DatasetsView: React.FC = () => {
                         {inspectionData.computer_vision.explanation}
                       </p>
                       <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <span className="status-pill pill-warning" style={{ fontSize: '9px' }}>
-                          Model Not Configured
+                        <span
+                          className={`status-pill ${inspectionData.computer_vision.inference_supported ? 'pill-active' : 'pill-warning'}`}
+                          style={{ fontSize: '9px' }}
+                        >
+                          {inspectionData.computer_vision.model_status}
                         </span>
                         <span className="status-pill pill-active" style={{ fontSize: '9px' }}>
                           Preprocessing Ready
@@ -756,7 +795,7 @@ export const DatasetsView: React.FC = () => {
 
                 <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
                   <a
-                    href={selectedImage.url}
+                    href={assetUrl(selectedImage.url)}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-secondary btn-sm"

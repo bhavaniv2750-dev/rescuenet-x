@@ -7,6 +7,13 @@ interface ForecastingViewProps {
   initialForecast?: FloodPredictionResult | null;
 }
 
+const SUITE_LABELS: Record<string, string> = {
+  leaky_baseline_all_features: 'All inputs incl. water level (leakage)',
+  early_warning_weather_only: 'Early warning, weather only (served)',
+  gauge_noise_0_5m: 'Noisy gauge, sd 0.5 m',
+  next_hour_forecast: 'Next-hour forecast',
+};
+
 export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecast }) => {
   // Input Sliders State
   const [rainfall, setRainfall] = useState<number>(38.0);
@@ -187,7 +194,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
           <div className="panel-title-bar">
             <div>
               <h3>AI Inference & Multi-Horizon Projections</h3>
-              <p>Model Confidence: {forecast?.confidence_level || '98.5%'}</p>
+              <p>Model Confidence: {forecast?.confidence_level || 'run a scenario to see the model evaluation'}</p>
             </div>
             <TrendingUp size={18} className="text-emerald" />
           </div>
@@ -282,7 +289,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
                 <div className="metrics-row">
                   <div><strong>Holdout Acc:</strong> {(forecast.evaluation_metrics.accuracy * 100).toFixed(1)}%</div>
                   {forecast.evaluation_metrics.cv_5fold_accuracy_mean !== undefined && (
-                    <div><strong>5-Fold CV:</strong> {(forecast.evaluation_metrics.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±0.0%)</div>
+                    <div><strong>5-Fold CV:</strong> {(forecast.evaluation_metrics.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±{((forecast.evaluation_metrics.cv_5fold_accuracy_std ?? 0) * 100).toFixed(1)}%)</div>
                   )}
                   <div><strong>Precision:</strong> {(forecast.evaluation_metrics.precision * 100).toFixed(1)}%</div>
                   <div><strong>Recall:</strong> {(forecast.evaluation_metrics.recall * 100).toFixed(1)}%</div>
@@ -298,6 +305,30 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
                     <span className="font-mono">TP: {forecast.evaluation_metrics.confusion_matrix[1][1]}</span>
                   </div>
                 )}
+                {forecast.evaluation_metrics.evaluation_suite && (
+                  <div style={{ marginTop: '10px', fontSize: '11px' }}>
+                    <div style={{ color: '#38bdf8', fontWeight: 600, marginBottom: '4px' }}>Honest evaluation (5-fold CV)</div>
+                    <table className="data-table" style={{ fontSize: '11px' }}>
+                      <thead>
+                        <tr><th>TEST</th><th>ACCURACY</th><th>F1</th><th>ROC-AUC</th></tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(forecast.evaluation_metrics.evaluation_suite).map(([name, r]) => (
+                          <tr key={name} title={r.description}>
+                            <td>{SUITE_LABELS[name] || name}</td>
+                            <td className="font-mono">{(r.accuracy_mean * 100).toFixed(1)}%</td>
+                            <td className="font-mono">{r.f1_mean.toFixed(2)}</td>
+                            <td className="font-mono">{r.roc_auc_mean.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="text-muted" style={{ marginTop: '4px' }}>
+                      The label is water level &gt; 4.21 m, so the all-inputs score of 100% is leakage. The served model uses
+                      weather only. Next-hour forecasting is near chance because the dataset rows are independent hours.
+                    </div>
+                  </div>
+                )}
                 <div className="metrics-footnote" style={{ fontSize: '11px', color: '#94a3b8', marginTop: '8px', lineHeight: '1.4' }}>
                   Trained with scikit-learn on <code>{forecast.data_source}</code> (1,000 gauge readings, STATION_HYDRO_04).
                   <br />
@@ -308,7 +339,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
           ) : (
             <div className="empty-forecast-prompt">
               <Activity size={36} className="text-muted" />
-              <p>Adjust inputs and click "Compute AI Flood Forecast" to run real-time inference.</p>
+              <p>Adjust inputs and click "Compute AI Flood Forecast" to run the model.</p>
             </div>
           )}
         </div>
