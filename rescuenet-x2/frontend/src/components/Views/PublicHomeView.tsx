@@ -27,7 +27,7 @@ export const PublicHomeView: React.FC<Props> = ({ alerts, gauges, facilities, us
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
 
-  const active = alerts.filter((a) => a.status === 'ACTIVE');
+  const active = alerts.filter((a) => a.status !== 'RESOLVED');
   const open = facilities.filter((f) => f.status !== 'FULL');
   const shelters = (nearby ?? open).filter((f) => f.facility_type === 'SHELTER' || f.facility_type === 'RELIEF_CAMP').slice(0, 4);
 

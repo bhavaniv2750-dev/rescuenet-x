@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { cleanMessage, toast } from '../../lib/toast';
-import { api } from '../../api/client';
+import { api, capUrl } from '../../api/client';
 import type { Alert } from '../../api/types';
 import { Check, Plus, Radio } from 'lucide-react';
 
@@ -9,9 +9,11 @@ interface AlertsViewProps {
   onRefresh: () => void;
   /** Only operations staff issue and clear alerts; everyone else reads them. */
   canManage?: boolean;
+  /** Commanders and administrators acknowledge alerts for the control room. */
+  isCommander?: boolean;
 }
 
-export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canManage = false }) => {
+export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canManage = false, isCommander = false }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -108,8 +110,14 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
                 <div className="alert-badge-group">
                   <span className={`pill-alert-${alt.severity.toLowerCase()}`}>{alt.severity}</span>
                   <span className={`status-pill ${isResolved ? 'pill-resolved' : 'pill-active'}`}>
-                    {alt.status}
+                    {alt.status === 'ACTIVE' ? 'IN FORCE' : alt.status === 'ACKNOWLEDGED' ? 'IN FORCE · ACKNOWLEDGED' : alt.status}
                   </span>
+                  {!isResolved && alt.status === 'ACTIVE' && (alt.escalation_level ?? 0) > 0 && (
+                    <span className="sev-tag sev-critical" title="No commander has acknowledged this alert in time">
+                      ESCALATED L{alt.escalation_level}
+                    </span>
+                  )}
+                  {alt.data_label !== 'OBSERVED' && <span className="sev-tag sev-info" title="Example data shipped with the project">SAMPLE</span>}
                   <span className="font-mono text-muted text-xs">{alt.id}</span>
                 </div>
                 <div className="radius-tag">
@@ -123,20 +131,26 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
 
               <div className="alert-card-meta">
                 <div>📍 <strong>Target Area:</strong> {alt.area}</div>
-                <div>📡 <strong>Channel:</strong> {alt.delivery_channel}</div>
-                <div>👥 <strong>Acknowledgments:</strong> {alt.acknowledged_count} verified receipts</div>
+                <div>📡 <strong>Shown in:</strong> this app. CAP 1.2 export available (no SMS or push is sent).</div>
+                <div>👥 <strong>Seen by:</strong> {alt.acknowledged_count} {alt.acknowledged_count === 1 ? 'person' : 'people'}
+                  {alt.acknowledged_by ? ` · acknowledged by ${alt.acknowledged_by}` : ''}</div>
                 <div className="text-muted text-xs">🕒 Created: {new Date(alt.created_at).toLocaleString()}</div>
               </div>
 
               <div className="alert-card-actions">
                 {!isResolved && (
                   <>
-                    <button
-                      className="btn-secondary btn-sm"
-                      onClick={() => handleAcknowledge(alt.id)}
-                    >
-                      ✓ Acknowledge (+1)
-                    </button>
+                    {isCommander ? (
+                      alt.status === 'ACTIVE' && (
+                        <button className="btn-primary btn-sm" onClick={() => handleAcknowledge(alt.id)}>
+                          Acknowledge as commander
+                        </button>
+                      )
+                    ) : (
+                      <button className="btn-secondary btn-sm" onClick={() => handleAcknowledge(alt.id)}>
+                        ✓ I have seen this
+                      </button>
+                    )}
                     {canManage && (
                       <button
                         className="btn-outline btn-sm text-red"
@@ -147,6 +161,9 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
                     )}
                   </>
                 )}
+                <a className="btn-outline btn-sm" href={capUrl(alt.id)} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                  CAP XML
+                </a>
                 {isResolved && (
                   <span className="text-muted text-xs">
                     Resolved at {alt.resolved_at ? new Date(alt.resolved_at).toLocaleTimeString() : 'N/A'}

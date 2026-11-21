@@ -116,7 +116,7 @@ function Shell() {
   }, [loadAllData, user, guest]);
 
   const openIncidents = incidents.filter((i) => !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(i.status)).length;
-  const activeAlerts = alerts.filter((a) => a.status === 'ACTIVE').length;
+  const activeAlerts = alerts.filter((a) => a.status !== 'RESOLVED').length;
   const badges: Partial<Record<Page, number>> = {
     'Emergency Alerts': activeAlerts || undefined,
     'Rescue Operations': staff ? openIncidents || undefined : undefined,
@@ -213,7 +213,7 @@ function Shell() {
 
           {activePage === 'Flood Forecasting' && <ForecastingView initialForecast={dashboardData?.forecast_preview} />}
 
-          {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} />}
+          {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} isCommander={canApprove(role)} />}
 
           {activePage === 'Rescue Operations' && (
             <RescueOperationsView incidents={incidents} teams={teams} onRefresh={loadAllData} onOpenReportModal={goReport} />

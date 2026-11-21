@@ -121,9 +121,16 @@ class Alert(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     radius_km = Column(Float, nullable=False, default=3.0)
-    status = Column(String(30), nullable=False, default="ACTIVE")  # ACTIVE, ACKNOWLEDGED, RESOLVED
-    delivery_channel = Column(String(50), nullable=False, default="SIMULATED_CAP_ALERT")
+    status = Column(String(30), nullable=False, default="ACTIVE")  # ACTIVE (not yet seen by a commander), ACKNOWLEDGED (in force), RESOLVED
+    delivery_channel = Column(String(50), nullable=False, default="IN_APP")
+    # Number of people who tapped "seen". It does not change the alert's status.
     acknowledged_count = Column(Integer, nullable=False, default=0)
+    # Set when a commander or administrator acknowledges the alert; stops escalation.
+    acknowledged_by = Column(String(100), nullable=True)
+    escalation_level = Column(Integer, nullable=False, default=0)
+    escalated_at = Column(DateTime, nullable=True)
+    # OBSERVED (issued by staff) or SIMULATED (sample data shipped with the project)
+    data_label = Column(String(20), nullable=False, default="SIMULATED")
     created_at = Column(DateTime, default=utc_now)
     resolved_at = Column(DateTime, nullable=True)
 

@@ -82,9 +82,9 @@ def test_full_system():
         "title": "Flash Surge Alert Test",
         "message": "Water level spike near Bellandur",
         "severity": "CRITICAL",
-        "area": "Bellandur Basin",
-        "latitude": 12.935,
-        "longitude": 77.678,
+        "area": "Whitefield Basin",
+        "latitude": 12.9698,
+        "longitude": 77.7500,
         "radius_km": 3.0
     })
     assert r.status_code == 201
@@ -92,7 +92,7 @@ def test_full_system():
 
     r = client.post(f"/api/alerts/{alert_id}/acknowledge")
     assert r.status_code == 200
-    assert r.json()["acknowledged_count"] == 1
+    assert r.json()["status"] == "ACKNOWLEDGED"  # the commander acknowledged it
     print(f" Alerts OK: Created & Acknowledged {alert_id}")
 
     print("\n=== 9. Rescue Teams & Assignment ===")

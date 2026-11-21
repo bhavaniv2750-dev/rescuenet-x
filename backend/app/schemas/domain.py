@@ -203,6 +203,10 @@ class AlertOut(BaseModel):
     status: str
     delivery_channel: str
     acknowledged_count: int
+    acknowledged_by: Optional[str] = None
+    escalation_level: int = 0
+    escalated_at: Optional[datetime] = None
+    data_label: Optional[str] = "SIMULATED"
     created_at: datetime
     resolved_at: Optional[datetime] = None
 

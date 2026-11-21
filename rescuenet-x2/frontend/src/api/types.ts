@@ -76,6 +76,10 @@ export interface Alert {
   status: 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
   delivery_channel: string;
   acknowledged_count: number;
+  acknowledged_by?: string | null;
+  escalation_level?: number;
+  escalated_at?: string | null;
+  data_label?: string;
   created_at: string;
   resolved_at?: string | null;
 }
@@ -175,6 +179,8 @@ export interface FloodPredictionResult {
   };
   advisory: string;
   gauge_rule_triggered?: boolean;
+  is_example_scenario?: boolean;
+  scenario_inputs?: { rainfall_mm: number; water_level_m: number; humidity_pct: number; temperature_c: number };
 }
 
 export interface EvaluationResult {

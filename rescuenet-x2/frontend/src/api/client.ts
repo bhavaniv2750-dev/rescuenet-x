@@ -89,6 +89,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Link to the CAP 1.2 XML for an alert (opens in a new tab, no sign-in needed). */
+export const capUrl = (alertId: string) => `${API_BASE_URL}/alerts/${encodeURIComponent(alertId)}/cap`;
+
 export const api = {
   // ---- authentication ----
   getPortals: () => request<import('./types').PortalInfo>('/auth/portals'),

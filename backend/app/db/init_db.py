@@ -388,8 +388,9 @@ def _init_core():
                 longitude=77.6778,
                 radius_km=3.5,
                 status="ACTIVE",
-                delivery_channel="SIMULATED_CAP_ALERT",
-                acknowledged_count=18,
+                delivery_channel="IN_APP",
+                data_label="SIMULATED",
+                acknowledged_count=0,
             ),
             Alert(
                 id="ALT-2026-02",
@@ -401,8 +402,9 @@ def _init_core():
                 longitude=77.6980,
                 radius_km=2.8,
                 status="ACTIVE",
-                delivery_channel="SIMULATED_CAP_ALERT",
-                acknowledged_count=12,
+                delivery_channel="IN_APP",
+                data_label="SIMULATED",
+                acknowledged_count=0,
             ),
             Alert(
                 id="ALT-2026-03",
@@ -414,8 +416,9 @@ def _init_core():
                 longitude=77.6412,
                 radius_km=5.0,
                 status="ACTIVE",
-                delivery_channel="SIMULATED_CAP_ALERT",
-                acknowledged_count=45,
+                delivery_channel="IN_APP",
+                data_label="SIMULATED",
+                acknowledged_count=0,
             ),
         ]
         db.add_all(alerts)
