@@ -1,0 +1,224 @@
+import type {
+  Alert,
+  DashboardData,
+  DatasetItem,
+  Facility,
+  FloodPredictionResult,
+  Incident,
+  RescueRecord,
+  RescueTeam,
+  RiverGauge,
+  SupervisorTask,
+  Volunteer,
+} from './types';
+
+// Default to backend port 8000
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(url, { ...options, headers });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    let detail = response.statusText;
+    try {
+      const parsed = JSON.parse(errorBody);
+      detail = parsed.detail || detail;
+    } catch {
+      detail = errorBody || detail;
+    }
+    throw new Error(`API Error ${response.status}: ${detail}`);
+  }
+
+  return response.json();
+}
+
+export const api = {
+  // Health
+  checkHealth: () => request<any>('/health'),
+
+  // Dashboard
+  getDashboard: () => request<DashboardData>('/dashboard'),
+
+  // Incidents
+  getIncidents: (params?: { status?: string; severity?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.severity) query.set('severity', params.severity);
+    if (params?.search) query.set('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request<{ items: Incident[]; count: number }>(`/incidents/${qs}`);
+  },
+
+  uploadIncidentImage: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/incidents/upload-image`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      let detail = response.statusText;
+      try {
+        const parsed = JSON.parse(err);
+        detail = parsed.detail || detail;
+      } catch {
+        detail = err || detail;
+      }
+      throw new Error(`Upload failed: ${detail}`);
+    }
+    return response.json() as Promise<{
+      status: string;
+      image_url: string;
+      filename: string;
+      size_bytes: number;
+    }>;
+  },
+
+  createIncident: (payload: {
+    title: string;
+    description: string;
+    area: string;
+    latitude: number;
+    longitude: number;
+    severity: string;
+    people_affected: number;
+    source?: string;
+    incident_type?: string;
+    image_url?: string | null;
+    reporter_name?: string | null;
+    reporter_contact?: string | null;
+  }) => request<Incident>('/incidents/', { method: 'POST', body: JSON.stringify(payload) }),
+
+  updateIncident: (id: string, payload: { status?: string; assigned_team_id?: string; severity?: string; image_url?: string | null }) =>
+    request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  deleteIncident: (id: string) => request<{ message: string }>(`/incidents/${id}`, { method: 'DELETE' }),
+
+  getRecordsCSVUrl: () => `${API_BASE_URL}/records/export/csv`,
+
+  apiBaseUrl: API_BASE_URL,
+
+  // Alerts
+  getAlerts: (statusFilter?: string) => {
+    const qs = statusFilter ? `?status_filter=${statusFilter}` : '';
+    return request<{ items: Alert[]; count: number; active_count: number }>(`/alerts/${qs}`);
+  },
+
+  createAlert: (payload: {
+    title: string;
+    message: string;
+    severity: string;
+    area: string;
+    latitude: number;
+    longitude: number;
+    radius_km: number;
+  }) => request<Alert>('/alerts/', { method: 'POST', body: JSON.stringify(payload) }),
+
+  acknowledgeAlert: (alertId: string) =>
+    request<Alert>(`/alerts/${alertId}/acknowledge`, { method: 'POST' }),
+
+  resolveAlert: (alertId: string) =>
+    request<Alert>(`/alerts/${alertId}/resolve`, { method: 'POST' }),
+
+  // Teams
+  getTeams: (statusFilter?: string) => {
+    const qs = statusFilter ? `?status=${statusFilter}` : '';
+    return request<{ items: RescueTeam[]; count: number; available_count: number }>(`/teams/${qs}`);
+  },
+
+  assignTeam: (teamId: string, incidentId: string) =>
+    request<any>(`/teams/${teamId}/assign`, { method: 'POST', body: JSON.stringify({ incident_id: incidentId }) }),
+
+  updateTeamStatus: (teamId: string, status: string) =>
+    request<RescueTeam>(`/teams/${teamId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+
+  // Volunteers
+  getVolunteers: (params?: { verified?: boolean; skill?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.verified !== undefined) query.set('verified', String(params.verified));
+    if (params?.skill) query.set('skill', params.skill);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request<{ items: Volunteer[]; count: number; verified_count: number }>(`/volunteers/${qs}`);
+  },
+
+  registerVolunteer: (payload: { name: string; phone: string; email: string; skills: string; area: string }) =>
+    request<Volunteer>('/volunteers/', { method: 'POST', body: JSON.stringify(payload) }),
+
+  updateVolunteer: (volunteerId: string, payload: { is_verified?: boolean; status?: string }) =>
+    request<Volunteer>(`/volunteers/${volunteerId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  // Facilities
+  getFacilities: (params?: { type?: string; lat?: number; lon?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.lat !== undefined) query.set('lat', String(params.lat));
+    if (params?.lon !== undefined) query.set('lon', String(params.lon));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request<{ items: Facility[]; count: number; total_capacity: number; total_occupancy: number }>(`/facilities/${qs}`);
+  },
+
+  createFacility: (payload: any) =>
+    request<Facility>('/facilities/', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Records
+  getRecords: () => request<{ items: RescueRecord[]; count: number }>('/records/'),
+
+  getRecordsSummary: () => request<any>('/records/summary'),
+
+  createRecord: (payload: any) =>
+    request<RescueRecord>('/records/', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Flood & GIS
+  getFloodStatus: () => request<any>('/flood/status'),
+
+  predictFlood: (scenario: { rainfall_mm: number; water_level_m: number; humidity_pct?: number; temperature_c?: number }) =>
+    request<FloodPredictionResult>('/flood/forecast', { method: 'POST', body: JSON.stringify(scenario) }),
+
+  getCatchmentsGeoJSON: () => request<any>('/flood/catchments'),
+
+  getRiverGauges: () => request<{ count: number; items: RiverGauge[] }>('/flood/gauges'),
+
+  // Agents & Supervisor
+  getAgents: () => request<any>('/agents/'),
+
+  getSupervisorTasks: () => request<{ items: SupervisorTask[]; count: number }>('/agents/tasks'),
+
+  executeSupervisorTriage: (payload: { task_type: string; incident_id?: string; area?: string; instruction?: string }) =>
+    request<SupervisorTask>('/agents/supervisor/triage', { method: 'POST', body: JSON.stringify(payload) }),
+
+  approveSupervisorTask: (taskId: string) =>
+    request<SupervisorTask>(`/agents/tasks/${taskId}/approve`, { method: 'POST' }),
+
+  // Datasets & Models
+  getDatasets: () => request<{ count: number; items: DatasetItem[]; storage_root: string; total_records_ingested: number; flood_images_verified: number; flood_images_unique?: number; duplicate_images_count?: number }>('/datasets/inventory'),
+
+  getModels: () => request<{ count: number; models: import('./types').ModelItem[]; active_forecaster: string; vision_model_configured: boolean }>('/datasets/models'),
+
+  getFloodImages: (params?: { page?: number; page_size?: number; search?: string; format?: string; collection?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.page_size) query.set('page_size', String(params.page_size));
+    if (params?.search) query.set('search', params.search);
+    if (params?.format) query.set('format', params.format);
+    if (params?.collection) query.set('collection', params.collection);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request<import('./types').PaginatedImagesResponse>(`/datasets/images${qs}`);
+  },
+
+  inspectImage: (filename: string) =>
+    request<import('./types').ImageInspectionResult>(`/datasets/images/inspect/${encodeURIComponent(filename)}`),
+
+  preprocessImage: (filename: string) =>
+    request<import('./types').ImagePreprocessingResult>(`/datasets/images/preprocess/${encodeURIComponent(filename)}`, { method: 'POST' }),
+
+  getImageFileUrl: (filename: string) =>
+    `${API_BASE_URL}/datasets/images/file/${encodeURIComponent(filename)}`,
+};
