@@ -195,6 +195,40 @@ def get_dataset_inventory(db: Session = Depends(get_db)):
         "duplicate_images_count": 1 if flood_img_count >= 809 else 0,
     }
 
+def _vision_model_entry() -> Dict[str, Any]:
+    import json as _json
+
+    from app.services.vision_service import MODEL_DIR, flood_vision_service
+
+    st = flood_vision_service.status()
+    ev_file = MODEL_DIR / "vision_evaluation.json"
+    ev = _json.loads(ev_file.read_text()) if ev_file.exists() else {}
+    combined = ev.get("combined_project_vs_non_flood", {})
+    return {
+        "id": "model-cv-flood-vision",
+        "name": "Flood Photo Analysis (CLIP zero-shot + SegFormer segmentation)",
+        "type": "Pretrained vision models, no fine-tuning",
+        "framework": "ONNX Runtime (CPU)",
+        "artifact": "clip_vit_b32_vision_quantized.onnx, segformer_b0_ade20k.onnx",
+        "status": "LOADED" if st["loaded"] else ("READY" if st["ready"] else "NOT_INSTALLED"),
+        "is_loaded": st["loaded"],
+        "prediction_endpoint": "/api/vision/analyze",
+        "preprocessing_endpoint": "/api/datasets/images/preprocess/{filename}",
+        "input_features": ["RGB photo (JPEG, PNG, WebP)"],
+        "accuracy": combined.get("accuracy"),
+        "f1_score": combined.get("f1"),
+        "recall": combined.get("recall"),
+        "specificity": combined.get("specificity"),
+        "roc_auc": None,
+        "training_samples": 0,
+        "test_samples": (ev.get("project_flood_folder", {}).get("images", 0) + ev.get("non_flood_scenes", {}).get("images", 0)) or None,
+        "dataset_provenance": "Evaluated on flood/ (809 flood photos) and 300 non-flood scenes (Intel Image Classification)",
+        "evaluation": ev or None,
+        "notes": "Flood yes/no from CLIP prompt matching (probability >= 0.5); water coverage, people and vehicles in water from SegFormer. "
+                 "Water depth is not estimated from photos. Weights download on first use (about 105 MB).",
+    }
+
+
 @router.get("/models")
 def get_models_status():
     """Returns actual loaded machine learning models and computer vision configuration."""
@@ -227,31 +261,14 @@ def get_models_status():
             "dataset_provenance": "clean_flood_prediction_data.csv (1000 real sensor records)",
             "validation_note": "The label is water_level_m > 4.21 m, so water level is kept out of the model (with it, accuracy is a trivial 100%). The model warns from weather inputs; the gauge reading is applied as a separate rule. Forward horizons are runoff-formula projections, not ML forecasts.",
         },
-        {
-            "id": "model-cv-flood-vision",
-            "name": "Flood Inundation & Object Detection (Computer Vision)",
-            "type": "Deep Learning Vision Architecture (YOLO / CNN)",
-            "framework": "PyTorch / Torchvision / ONNX",
-            "artifact": "None (No weights file present in backend/app/ml/artifacts/)",
-            "status": "NOT_CONFIGURED",
-            "is_loaded": False,
-            "prediction_endpoint": None,
-            "preprocessing_endpoint": "/api/datasets/images/preprocess/{filename}",
-            "input_features": ["RGB Disaster Field Imagery (JPEG, PNG, WebP)"],
-            "accuracy": None,
-            "roc_auc": None,
-            "training_samples": 0,
-            "test_samples": 0,
-            "dataset_provenance": "flood/ (809 field & remote sensing images) & people dataset (101 Roboflow images)",
-            "notes": "Model not configured. Workspace contains 809 field/remote sensing images in flood/ and 101 annotated Roboflow images, but no trained CNN/YOLO checkpoint (.pt/.onnx) is bundled. Preprocessing, aspect-ratio parsing, duplicate detection, and metadata extraction are fully operational. Automated inference is disabled to prevent fabricated predictions.",
-        }
+        _vision_model_entry(),
     ]
 
     return {
         "count": len(models),
         "models": models,
-        "active_forecaster": "Random Forest Flood Risk Estimator",
-        "vision_model_configured": False,
+        "active_forecaster": "Random Forest Early-Warning Flood Risk Model",
+        "vision_model_configured": models[-1]["is_loaded"] or models[-1]["status"] == "READY",
     }
 
 @router.get("/images")
@@ -453,6 +470,12 @@ def serve_flood_image(filename: str):
         headers={"Cache-Control": "public, max-age=3600"},
     )
 
+def _vision_ready() -> bool:
+    from app.services.vision_service import flood_vision_service
+
+    return flood_vision_service.status()["ready"]
+
+
 @router.get("/images/inspect/{filename}")
 def inspect_image_metadata(filename: str):
     """Inspects technical image metadata, duplicate status, and computer-vision preprocessing readiness."""
@@ -504,9 +527,10 @@ def inspect_image_metadata(filename: str):
             "unique_in_dataset": 808,
         },
         "computer_vision": {
-            "model_status": "Model not configured",
-            "has_trained_weights": False,
-            "inference_supported": False,
+            "model_status": "Pretrained CLIP + SegFormer available" if _vision_ready() else "Vision model not installed",
+            "has_trained_weights": _vision_ready(),
+            "inference_supported": _vision_ready(),
+            "analyze_url": f"{settings.API_V1_STR}/vision/dataset/{safe_name}",
             "preprocessing_ready": True,
             "labels": (
                 ["Remote Sensing Frame", "512x384 Grid", "Unannotated"]
@@ -521,7 +545,7 @@ def inspect_image_metadata(filename: str):
                 "normalization_parameters": "mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]",
                 "raw_sample_luminance": avg_sample_brightness,
             },
-            "explanation": "No trained weights file (.pt or .onnx) exists for vision detection. Preprocessing pipeline is operational; automated visual predictions are disabled to prevent simulated output.",
+            "explanation": "Use analyze_url to run the pretrained flood-photo models on this image.",
         },
         "url": f"{settings.API_V1_STR}/datasets/images/file/{safe_name}",
         "preprocess_url": f"{settings.API_V1_STR}/datasets/images/preprocess/{safe_name}",
@@ -569,8 +593,8 @@ def preprocess_flood_image(filename: str):
             "value_range": "[0.0, 1.0]",
         },
         "model_integration": {
-            "model_status": "Model not configured",
+            "model_status": "Pretrained CLIP + SegFormer available" if _vision_ready() else "Vision model not installed",
             "inference_executed": False,
-            "message": "Preprocessing validated. Model inference requires a trained checkpoint in backend/app/ml/artifacts/ (e.g. flood_yolo.onnx).",
+            "message": f"Preprocessing validated. Run {settings.API_V1_STR}/vision/dataset/{safe_name} for the flood analysis.",
         },
     }

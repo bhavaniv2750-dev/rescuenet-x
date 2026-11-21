@@ -15,6 +15,13 @@ import type {
 // Default to backend port 8000
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
+/** Turn a server path such as /api/datasets/images/file/x.jpg into a full URL on the API host. */
+export function assetUrl(path?: string | null): string {
+  if (!path) return '';
+  if (/^(https?:|data:|blob:)/.test(path)) return path;
+  return `${API_BASE_URL.replace(/\/api\/?$/, '')}${path}`;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const headers = {
@@ -95,6 +102,7 @@ export const api = {
     image_url?: string | null;
     reporter_name?: string | null;
     reporter_contact?: string | null;
+    reported_water_depth?: string | null;
   }) => request<Incident>('/incidents/', { method: 'POST', body: JSON.stringify(payload) }),
 
   updateIncident: (id: string, payload: { status?: string; assigned_team_id?: string; severity?: string; image_url?: string | null }) =>
@@ -110,6 +118,14 @@ export const api = {
     request<{ states: string[]; transitions: Record<string, string[]>; terminal_states: string[] }>('/incidents/lifecycle'),
 
   getBeacons: () => request<{ items: import('./types').Beacon[]; count: number }>('/incidents/beacons'),
+
+  analyzeIncidentPhoto: (id: string) =>
+    request<Incident>(`/incidents/${id}/analyze-photo`, { method: 'POST' }),
+
+  analyzeDatasetImage: (filename: string) =>
+    request<import('./types').VisionAnalysis>(`/vision/dataset/${encodeURIComponent(filename)}`),
+
+  getVisionStatus: () => request<{ ready: boolean; loaded: boolean; weights_present: boolean; runtime_installed: boolean; last_error?: string | null }>('/vision/status'),
 
   deleteIncident: (id: string) => request<{ message: string }>(`/incidents/${id}`, { method: 'DELETE' }),
 

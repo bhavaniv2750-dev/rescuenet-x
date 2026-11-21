@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import uuid
@@ -283,6 +284,7 @@ def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)):
         image_url=payload.image_url,
         reporter_name=payload.reporter_name,
         reporter_contact=payload.reporter_contact,
+        reported_water_depth=payload.reported_water_depth.upper() if payload.reported_water_depth else None,
     )
 
     db.add(incident)
@@ -290,6 +292,36 @@ def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
+
+@router.post("/{incident_id}/analyze-photo", response_model=IncidentOut)
+def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db)):
+    """Run the flood-photo models on the incident's uploaded photo and store the summary."""
+    from app.services.vision_service import VisionModelUnavailable, flood_vision_service
+
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    prefix = "/api/incidents/uploads/"
+    if not inc.image_url or not inc.image_url.startswith(prefix):
+        raise HTTPException(status_code=422, detail="Incident has no uploaded photo to analyse")
+    path = settings.UPLOAD_DIR / os.path.basename(inc.image_url[len(prefix):])
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Uploaded photo file is missing")
+    try:
+        result = flood_vision_service.analyze(path.read_bytes(), include_overlay=False)
+    except VisionModelUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    keep = ["data_label", "model", "flood_detected", "flood_probability", "closest_description",
+            "water_coverage_pct", "people_detected", "people_in_water", "vehicles_detected",
+            "vehicles_in_water", "boats_detected", "suggested_severity", "inference_ms"]
+    summary = {k: result[k] for k in keep}
+    inc.photo_analysis = json.dumps(summary)
+    record_audit(db, "vision-model", "PHOTO_ANALYSED", "incident", inc.id,
+                 f"flood p={summary['flood_probability']}, suggested {summary['suggested_severity']}", role="AGENT")
+    db.commit()
+    db.refresh(inc)
+    return IncidentOut.model_validate(inc)
+
 
 @router.get("/{incident_id}", response_model=IncidentOut)
 def get_incident(incident_id: str, db: Session = Depends(get_db)):

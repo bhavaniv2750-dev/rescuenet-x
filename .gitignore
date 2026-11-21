@@ -68,3 +68,7 @@ Thumbs.db
 # Runtime uploads (incident photos)
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Vision model weights (downloaded by backend/scripts/download_vision_model.py)
+backend/app/ml/artifacts/vision/*.onnx
+backend/app/ml/artifacts/vision/*.part

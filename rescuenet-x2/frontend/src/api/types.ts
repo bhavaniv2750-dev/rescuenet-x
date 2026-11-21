@@ -21,6 +21,8 @@ export interface Incident {
   location_method?: string | null;
   verified_by?: string | null;
   duplicate_of?: string | null;
+  reported_water_depth?: WaterDepth | null;
+  photo_analysis?: Partial<VisionAnalysis> | null;
   incident_type?: string;
   image_url?: string | null;
   reporter_name?: string | null;
@@ -413,3 +415,25 @@ export interface Beacon {
   last_seen?: string | null;
   data_label: string;
 }
+
+export interface VisionAnalysis {
+  data_label: string;
+  model: string;
+  flood_detected: boolean;
+  flood_probability: number;
+  closest_description: string;
+  water_coverage_pct: number;
+  water_coverage_lower_half_pct?: number;
+  people_detected: number;
+  people_in_water: number;
+  vehicles_detected: number;
+  vehicles_in_water: number;
+  boats_detected: number;
+  suggested_severity: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  inference_ms: number;
+  caveats?: string[];
+  overlay_png_base64?: string;
+  filename?: string;
+}
+
+export type WaterDepth = 'ANKLE' | 'KNEE' | 'WAIST' | 'CHEST_OR_DEEPER' | 'UNKNOWN';

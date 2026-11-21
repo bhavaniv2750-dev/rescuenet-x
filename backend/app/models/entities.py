@@ -39,6 +39,10 @@ class Incident(Base):
     location_method = Column(String(20), nullable=True)  # GPS, TRILATERATION, MANUAL
     verified_by = Column(String(100), nullable=True)
     duplicate_of = Column(String(50), nullable=True)
+    # Depth as judged by the person reporting: ANKLE, KNEE, WAIST, CHEST_OR_DEEPER or UNKNOWN
+    reported_water_depth = Column(String(20), nullable=True)
+    # JSON summary of the photo analysis (PREDICTED), if a photo was analysed
+    photo_analysis = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

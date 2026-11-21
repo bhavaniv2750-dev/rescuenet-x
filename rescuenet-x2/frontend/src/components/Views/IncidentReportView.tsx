@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../api/client';
-import type { Incident } from '../../api/types';
+import { api, assetUrl } from '../../api/client';
+import type { Incident, WaterDepth } from '../../api/types';
+import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
 import { actionsFor, humanStatus, statusPillClass } from '../../lib/lifecycle';
 import {
   AlertTriangle,
@@ -46,6 +47,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
   const [longitude, setLongitude] = useState(77.696);
   const [reporterName, setReporterName] = useState('');
   const [reporterContact, setReporterContact] = useState('');
+  const [waterDepth, setWaterDepth] = useState<WaterDepth>('UNKNOWN');
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [brokenImage, setBrokenImage] = useState<string | null>(null);
 
   // Image Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -158,6 +163,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         image_url: uploadedImageUrl,
         reporter_name: reporterName || undefined,
         reporter_contact: reporterContact || undefined,
+        reported_water_depth: waterDepth,
       });
 
       setSubmittedNotice(
@@ -167,6 +173,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       setDescription('');
       setReporterName('');
       setReporterContact('');
+      setWaterDepth('UNKNOWN');
       handleRemoveImage();
 
       // Refresh data
@@ -192,10 +199,24 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
     }
   };
 
+  const handleAnalyzePhoto = async () => {
+    if (!selectedIncident) return;
+    setAnalyzingPhoto(true);
+    setPhotoError(null);
+    try {
+      const updated = await api.analyzeIncidentPhoto(selectedIncident.id);
+      setSelectedIncident(updated);
+      setIncidents((prev) => prev.map((inc) => (inc.id === updated.id ? updated : inc)));
+    } catch (err: any) {
+      setPhotoError(err.message);
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
+
   const resolveImageSource = (url?: string | null) => {
     if (!url) return null;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    return `http://127.0.0.1:8000${url}`;
+    return assetUrl(url);
   };
 
   return (
@@ -365,6 +386,17 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                 />
               </label>
             </div>
+
+            <label>
+              Water depth where you are
+              <select className="select-input" value={waterDepth} onChange={(e) => setWaterDepth(e.target.value as WaterDepth)}>
+                <option value="UNKNOWN">Not sure</option>
+                <option value="ANKLE">Ankle deep (below 0.3 m)</option>
+                <option value="KNEE">Knee deep (0.3 to 0.6 m)</option>
+                <option value="WAIST">Waist deep (0.6 to 1.0 m)</option>
+                <option value="CHEST_OR_DEEPER">Chest deep or more (above 1.0 m)</option>
+              </select>
+            </label>
 
             <label>
               Detailed Field Observations *
@@ -670,6 +702,9 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                     <span className="text-xs text-muted" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Phone size={12} /> {selectedIncident.reporter_contact || 'No phone provided'}
                     </span>
+                    <span className="text-xs text-muted" style={{ marginTop: '4px' }}>
+                      Reported water depth: {(selectedIncident.reported_water_depth || 'UNKNOWN').replace(/_/g, ' ')}
+                    </span>
                   </div>
 
                   <div className="stat-card">
@@ -721,16 +756,34 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         alignItems: 'center',
                       }}
                     >
-                      <img
-                        src={resolveImageSource(selectedIncident.image_url) || ''}
-                        alt={`Observation for ${selectedIncident.id}`}
-                        style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
-                        onError={(e) => {
-                          (e.target as any).src = 'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=600&q=80';
-                        }}
-                      />
+                      {brokenImage === selectedIncident.image_url ? (
+                        <div style={{ padding: '24px', color: '#64748b', fontSize: '13px' }}>
+                          The attached photo could not be loaded.
+                        </div>
+                      ) : (
+                        <img
+                          src={resolveImageSource(selectedIncident.image_url) || ''}
+                          alt={`Observation for ${selectedIncident.id}`}
+                          style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
+                          onError={() => setBrokenImage(selectedIncident.image_url || null)}
+                        />
+                      )}
                     </div>
-                  ) : (
+                  ) : null}
+                  {selectedIncident.image_url && (
+                    <div style={{ marginTop: '10px' }}>
+                      <button className="btn-secondary" style={{ fontSize: '12px' }} onClick={handleAnalyzePhoto} disabled={analyzingPhoto}>
+                        {analyzingPhoto ? 'Analysing photo…' : selectedIncident.photo_analysis ? 'Re-run Photo Analysis (AI)' : 'Analyse Photo (AI)'}
+                      </button>
+                      {photoError && <div className="text-xs text-orange" style={{ marginTop: '6px' }}>{photoError}</div>}
+                      {selectedIncident.photo_analysis && (
+                        <div style={{ marginTop: '8px' }}>
+                          <FloodPhotoAnalysis result={selectedIncident.photo_analysis} compact />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!selectedIncident.image_url && (
                     <div
                       style={{
                         padding: '24px',

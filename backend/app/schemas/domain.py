@@ -1,8 +1,12 @@
+import json
 from datetime import datetime
-from typing import Any, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ================= Incidents =================
+_DEPTH_PATTERN = "(?i)^(ANKLE|KNEE|WAIST|CHEST_OR_DEEPER|UNKNOWN)$"
+
+
 class IncidentCreate(BaseModel):
     title: str = Field(min_length=3, max_length=150)
     description: str = Field(min_length=3, max_length=2000)
@@ -16,6 +20,7 @@ class IncidentCreate(BaseModel):
     image_url: Optional[str] = None
     reporter_name: Optional[str] = None
     reporter_contact: Optional[str] = None
+    reported_water_depth: Optional[str] = Field(default=None, pattern=_DEPTH_PATTERN)
 
 _STATUS_PATTERN = (
     "(?i)^(REPORTED|UNDER_VERIFICATION|VERIFIED|QUEUED|TRIAGE_IN_PROGRESS|PENDING_APPROVAL|DISPATCHED|"
@@ -53,10 +58,22 @@ class IncidentOut(BaseModel):
     location_method: Optional[str] = None
     verified_by: Optional[str] = None
     duplicate_of: Optional[str] = None
+    reported_water_depth: Optional[str] = None
+    photo_analysis: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("photo_analysis", mode="before")
+    @classmethod
+    def _parse_photo_analysis(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return None
+        return v
 
 
 class IncidentStateChange(BaseModel):
