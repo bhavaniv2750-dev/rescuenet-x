@@ -177,3 +177,13 @@ def test_login_events_are_in_the_audit_log():
     admin = fresh("admin")
     actions = {e["action"] for e in admin.get("/api/auth/audit", params={"limit": 200}).json()["items"]}
     assert "LOGIN" in actions
+
+
+def test_diagnostics_is_admin_only_and_reports_warnings():
+    assert fresh("commander").get("/api/diagnostics/").status_code == 403
+    assert TestClient(app).get("/api/diagnostics/").status_code == 401
+    body = fresh("admin").get("/api/diagnostics/").json()
+    assert body["database"]["tables"]["users"] >= 6
+    assert body["flood_model"]["loaded"] is True
+    assert any("documented demo password" in w for w in body["warnings"])
+    assert "jwt_secret_from_env" in body["auth"] and "secret" not in str(body["auth"]).lower().replace("jwt_secret_from_env", "")

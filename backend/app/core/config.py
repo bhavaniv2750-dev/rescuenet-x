@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     SEED_DEMO_USERS: bool = os.getenv("SEED_DEMO_USERS", "true").lower() in ("1", "true", "yes")
     DEMO_USER_PASSWORD: str = os.getenv("DEMO_USER_PASSWORD", "Rescue@2026")
     ADMIN_PASSWORD: str = os.getenv("RESCUENET_ADMIN_PASSWORD", "")
+    # LoRa gateways are devices; when set, /api/incidents/lora requires this key in the X-Gateway-Key header.
+    LORA_GATEWAY_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

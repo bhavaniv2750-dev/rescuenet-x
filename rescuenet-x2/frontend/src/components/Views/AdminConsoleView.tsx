@@ -16,7 +16,8 @@ interface Props {
 
 export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => {
   const { user: me } = useAuth();
-  const [tab, setTab] = useState<'users' | 'audit'>(canManageUsers ? 'users' : 'audit');
+  const [tab, setTab] = useState<'users' | 'audit' | 'system'>(canManageUsers ? 'users' : 'audit');
+  const [diag, setDiag] = useState<Record<string, any> | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
@@ -26,7 +27,10 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
 
   const load = useCallback(async () => {
     try {
-      if (canManageUsers) setUsers((await api.getUsers()).items);
+      if (canManageUsers) {
+        setUsers((await api.getUsers()).items);
+        setDiag(await api.getDiagnostics());
+      }
       const a = await api.getAuditLog(200, filter || undefined);
       setAudit(a.items);
       setAuditTotal(a.count);
@@ -77,12 +81,15 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
       </div>
 
       {canManageUsers && (
-        <div className="seg-control seg-wide" role="tablist">
+        <div className="seg-control seg-wide" role="tablist" style={{ maxWidth: 560 }}>
           <button role="tab" aria-selected={tab === 'users'} className={tab === 'users' ? 'seg-active' : ''} onClick={() => setTab('users')}>
             Accounts ({users.length})
           </button>
           <button role="tab" aria-selected={tab === 'audit'} className={tab === 'audit' ? 'seg-active' : ''} onClick={() => setTab('audit')}>
             Audit log ({auditTotal})
+          </button>
+          <button role="tab" aria-selected={tab === 'system'} className={tab === 'system' ? 'seg-active' : ''} onClick={() => setTab('system')}>
+            System{diag?.warnings?.length ? ` (${diag.warnings.length})` : ''}
           </button>
         </div>
       )}
@@ -193,6 +200,41 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
             </table>
           </div>
         </section>
+      )}
+
+      {tab === 'system' && canManageUsers && diag && (
+        <div className="two-col">
+          <section className="panel">
+            <div className="panel-title-bar"><h3>Needs attention ({diag.warnings.length})</h3></div>
+            {diag.warnings.length === 0 ? (
+              <div className="empty-state"><strong>Nothing to fix</strong></div>
+            ) : (
+              <ul className="plain-list">
+                {diag.warnings.map((w: string) => (
+                  <li key={w} style={{ fontSize: 13, lineHeight: 1.45 }}>{w}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="panel">
+            <div className="panel-title-bar"><h3>Status</h3></div>
+            <div className="kv-list">
+              {[
+                ['Python', diag.runtime.python],
+                ['Flood model', diag.flood_model.loaded ? `loaded, CV accuracy ${((diag.flood_model.cv_accuracy ?? 0) * 100).toFixed(1)}%` : 'not loaded'],
+                ['Photo models', diag.vision_model.ready ? 'installed' : 'not installed'],
+                ['Ollama', diag.ollama.available ? `online (${diag.ollama.model})` : 'offline, fallback in use'],
+                ['Accounts', String(diag.database.tables.users)],
+                ['Incidents', `${diag.database.tables.incidents} (${Object.entries(diag.database.incidents_by_data_label).map(([k, v]) => `${v} ${String(k).toLowerCase()}`).join(', ')})`],
+                ['Audit entries', String(diag.database.tables.audit_entries)],
+                ['Uploads', `${diag.storage.uploads_mb} MB`],
+                ['Demo mode', diag.auth.demo_mode ? 'on' : 'off'],
+              ].map(([k, v]) => (
+                <div key={k} className="kv-row"><span>{k}</span><strong>{v}</strong></div>
+              ))}
+            </div>
+          </section>
+        </div>
       )}
 
       {showCreate && <CreateUserModal teams={teams} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}

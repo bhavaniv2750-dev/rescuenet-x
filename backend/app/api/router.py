@@ -4,6 +4,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.datasets import router as datasets_router
+from app.api.routes.diagnostics import router as diagnostics_router
 from app.api.routes.facilities import router as facilities_router
 from app.api.routes.flood import router as flood_router
 from app.api.routes.health import router as health_router
@@ -31,3 +32,4 @@ api_router.include_router(records_router, prefix="/records", tags=["Rescue Recor
 api_router.include_router(agents_router, prefix="/agents", tags=["AI Agents"])
 api_router.include_router(datasets_router, prefix="/datasets", tags=["Datasets"])
 api_router.include_router(vision_router, prefix="/vision", tags=["Vision"], dependencies=[Depends(require_roles(*DEPT))])
+api_router.include_router(diagnostics_router, prefix="/diagnostics", tags=["Diagnostics"])

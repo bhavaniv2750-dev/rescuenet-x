@@ -129,7 +129,7 @@ def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db), x_gate
     Gateways are devices, not people, so they do not sign in. When LORA_GATEWAY_KEY is set,
     packets must carry it in the X-Gateway-Key header.
     """
-    expected = os.getenv("LORA_GATEWAY_KEY")
+    expected = settings.LORA_GATEWAY_KEY
     if expected and x_gateway_key != expected:
         raise HTTPException(status_code=401, detail="Missing or wrong gateway key")
     rms = None

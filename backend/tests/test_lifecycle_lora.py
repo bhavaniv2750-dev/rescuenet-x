@@ -157,3 +157,15 @@ def test_lora_trilateration_end_to_end():
     assert r.json()["location_method"] == "TRILATERATION"
     inc = r.json()["incident"]
     assert 12.92 < inc["latitude"] < 12.945 and 77.61 < inc["longitude"] < 77.64
+
+
+def test_lora_gateway_key_is_enforced_when_configured(monkeypatch):
+    from app.core.config import settings
+
+    pkt = {"beacon_id": "BCN-KEY-1", "latitude": 12.93, "longitude": 77.62, "hop_count": 1,
+           "battery_pct": 70, "emergency_level": "LOW", "casualty_estimate": 1}
+    monkeypatch.setattr(settings, "LORA_GATEWAY_KEY", "s3cret-key")
+    anon = TestClient(app)  # gateways are devices: no user sign-in
+    assert anon.post("/api/incidents/lora", json=pkt).status_code == 401
+    assert anon.post("/api/incidents/lora", json=pkt, headers={"X-Gateway-Key": "wrong"}).status_code == 401
+    assert anon.post("/api/incidents/lora", json=pkt, headers={"X-Gateway-Key": "s3cret-key"}).status_code == 201

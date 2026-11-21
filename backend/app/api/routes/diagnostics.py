@@ -1,0 +1,97 @@
+"""System diagnostics for administrators: what is running, what is configured, and what to fix."""
+
+import os
+import platform
+import sys
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.api.deps import require_roles
+from app.core.config import settings
+from app.core.security import verify_password
+from app.db.session import get_db
+from app.models.entities import Alert, AuditLog, Beacon, Facility, Incident, RescueTeam, SupervisorTask, User, Volunteer
+
+router = APIRouter()
+
+
+def _dir_size_mb(path) -> float:
+    total = 0
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file():
+                total += entry.stat().st_size
+    except OSError:
+        return 0.0
+    return round(total / 1e6, 2)
+
+
+@router.get("/", dependencies=[Depends(require_roles("ADMIN"))])
+def diagnostics(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    from app.ml.flood_model import flood_ml_service
+    from app.services.ollama_service import ollama_supervisor_service
+    from app.services.vision_service import flood_vision_service
+
+    warnings: List[str] = []
+
+    def count(model) -> int:
+        return db.query(func.count()).select_from(model).scalar() or 0
+
+    # ---- data
+    by_label = dict(db.query(Incident.data_label, func.count()).group_by(Incident.data_label).all())
+    tables = {
+        "incidents": count(Incident), "alerts": count(Alert), "teams": count(RescueTeam),
+        "volunteers": count(Volunteer), "facilities": count(Facility), "beacons": count(Beacon),
+        "supervisor_tasks": count(SupervisorTask), "users": count(User), "audit_entries": count(AuditLog),
+    }
+
+    # ---- accounts
+    demo_names = ["admin", "commander", "operator", "officer", "volunteer", "citizen"]
+    still_demo = [
+        u.username for u in db.query(User).filter(User.username.in_(demo_names), User.is_active.is_(True)).all()
+        if verify_password(settings.DEMO_USER_PASSWORD, u.password_hash)
+    ]
+    if still_demo:
+        warnings.append(
+            f"{len(still_demo)} active accounts still use the documented demo password ({', '.join(still_demo)}). "
+            "Change their passwords or disable them in the Admin Console before any real use."
+        )
+    if settings.SEED_DEMO_USERS:
+        warnings.append("SEED_DEMO_USERS is on: demo accounts are created on an empty database.")
+    if not settings.JWT_SECRET:
+        warnings.append("JWT_SECRET is not set: a random secret is kept in backend/.jwt_secret. Set JWT_SECRET to keep sessions valid across machines.")
+    if not settings.LORA_GATEWAY_KEY:
+        warnings.append("LORA_GATEWAY_KEY is not set: anyone who can reach /api/incidents/lora can create SOS incidents.")
+
+    # ---- models
+    ollama = ollama_supervisor_service.check_health()
+    if not ollama.get("available"):
+        warnings.append("Ollama is not reachable: supervisor triage uses the rule-based fallback and always requires commander approval.")
+    vision = flood_vision_service.status()
+    if not vision["ready"]:
+        warnings.append("Flood photo models are not installed: run python scripts/download_vision_model.py.")
+
+    return {
+        "runtime": {"python": sys.version.split()[0], "platform": platform.platform(), "debug": settings.DEBUG},
+        "database": {"url_kind": settings.DATABASE_URL.split(":")[0], "tables": tables, "incidents_by_data_label": by_label},
+        "flood_model": {
+            "loaded": flood_ml_service.model is not None,
+            "inputs": flood_ml_service.metrics.get("model_inputs"),
+            "holdout_accuracy": flood_ml_service.metrics.get("accuracy"),
+            "cv_accuracy": flood_ml_service.metrics.get("cv_5fold_accuracy_mean"),
+        },
+        "vision_model": vision,
+        "ollama": {"model": settings.OLLAMA_MODEL, "timeout_s": settings.OLLAMA_TIMEOUT_SECONDS, **ollama},
+        "auth": {
+            "token_minutes": settings.ACCESS_TOKEN_MINUTES,
+            "demo_mode": settings.SEED_DEMO_USERS,
+            "jwt_secret_from_env": bool(settings.JWT_SECRET),
+            "lora_gateway_key_set": bool(settings.LORA_GATEWAY_KEY),
+            "cors_origins": settings.CORS_ORIGINS,
+        },
+        "storage": {"uploads_mb": _dir_size_mb(settings.UPLOAD_DIR), "flood_images_dir_exists": settings.FLOOD_IMG_DIR.exists()},
+        "warnings": warnings,
+    }
