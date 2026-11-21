@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Alert } from '../../api/types';
 import { Check, Plus, Radio } from 'lucide-react';
@@ -6,9 +7,11 @@ import { Check, Plus, Radio } from 'lucide-react';
 interface AlertsViewProps {
   alerts: Alert[];
   onRefresh: () => void;
+  /** Only operations staff issue and clear alerts; everyone else reads them. */
+  canManage?: boolean;
 }
 
-export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => {
+export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canManage = false }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -39,7 +42,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => 
       setActionNotice('Emergency Geo-Targeted Alert created and broadcast in simulated CAP channel.');
       onRefresh();
     } catch (err: any) {
-      alert(err.message || 'Error creating alert');
+      toast.error(cleanMessage(err) || 'Error creating alert');
     } finally {
       setSubmitting(false);
     }
@@ -51,7 +54,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => 
       setActionNotice(`Alert ${id} acknowledged. Citizen receipt registered.`);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -61,7 +64,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => 
       setActionNotice(`Alert ${id} marked as RESOLVED.`);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -71,13 +74,14 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => 
         <div>
           <h2>Geo-Targeted Emergency Alerts Console</h2>
           <p>
-            Persist Common Alerting Protocol (CAP) alerts with geographic radius targeting.
-            (Simulated broadcast with acknowledgment audit log).
+            Warnings for areas at risk, each with a target radius. They are shown in this app; they are not sent as SMS or push messages.
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-          <Plus size={16} /> Issue Emergency Alert
-        </button>
+        {canManage && (
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <Plus size={16} /> Issue Emergency Alert
+          </button>
+        )}
       </div>
 
       {actionNotice && (
@@ -133,12 +137,14 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh }) => 
                     >
                       ✓ Acknowledge (+1)
                     </button>
-                    <button
-                      className="btn-outline btn-sm text-red"
-                      onClick={() => handleResolve(alt.id)}
-                    >
-                      Resolve / Clear
-                    </button>
+                    {canManage && (
+                      <button
+                        className="btn-outline btn-sm text-red"
+                        onClick={() => handleResolve(alt.id)}
+                      >
+                        Resolve / Clear
+                      </button>
+                    )}
                   </>
                 )}
                 {isResolved && (

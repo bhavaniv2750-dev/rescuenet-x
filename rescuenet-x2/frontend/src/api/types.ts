@@ -437,3 +437,44 @@ export interface VisionAnalysis {
 }
 
 export type WaterDepth = 'ANKLE' | 'KNEE' | 'WAIST' | 'CHEST_OR_DEEPER' | 'UNKNOWN';
+
+export type Role = 'ADMIN' | 'COMMANDER' | 'OPERATOR' | 'RESCUE_OFFICER' | 'VOLUNTEER' | 'CITIZEN';
+export type PortalId = 'public' | 'operations' | 'admin';
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: Role;
+  portal: PortalId | '';
+  team_id?: string | null;
+  volunteer_id?: string | null;
+  volunteer_verified?: boolean | null;
+  is_active: boolean;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export interface PortalInfo {
+  demo_mode: boolean;
+  demo_accounts: { portal: PortalId; username: string; role: Role; label: string }[];
+  demo_password: string | null;
+  portals: { id: PortalId; name: string; roles: Role[]; self_signup: boolean }[];
+}
+
+export interface RegisterPayload {
+  role: 'CITIZEN' | 'VOLUNTEER';
+  username: string;
+  full_name: string;
+  password: string;
+  phone: string;
+  email?: string;
+  skills?: string;
+  area?: string;
+}

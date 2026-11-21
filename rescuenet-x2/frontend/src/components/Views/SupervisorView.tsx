@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Incident, SupervisorTask } from '../../api/types';
 import {
@@ -15,6 +16,8 @@ import {
 
 interface SupervisorViewProps {
   incidents: Incident[];
+  /** Only commanders and administrators can approve or decline a dispatch. */
+  canApprove?: boolean;
 }
 
 type ExecutionState = 'idle' | 'running' | 'completed' | 'failed' | 'ollama_unavailable' | 'awaiting_approval';
@@ -28,7 +31,7 @@ interface OllamaInfo {
   error?: string | null;
 }
 
-export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => {
+export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canApprove = false }) => {
   const [tasks, setTasks] = useState<SupervisorTask[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [ollamaInfo, setOllamaInfo] = useState<OllamaInfo | null>(null);
@@ -91,26 +94,29 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
     }
   };
 
+  const [decisionNote, setDecisionNote] = useState('');
+
   const handleDecline = async (taskId: string) => {
-    const note = window.prompt('Reason for declining this plan (recorded in the audit log):') || undefined;
     try {
-      const updated = await api.declineSupervisorTask(taskId, note);
+      const updated = await api.declineSupervisorTask(taskId, decisionNote.trim() || undefined);
+      setDecisionNote('');
       setLatestTask(updated);
       setExecState('completed');
       await fetchTasksAndAgents();
     } catch (err: any) {
-      alert(`Decline failed: ${err.message}`);
+      toast.error(`Decline failed: ${cleanMessage(err)}`);
     }
   };
 
   const handleApprove = async (taskId: string) => {
     try {
-      const updated = await api.approveSupervisorTask(taskId);
+      const updated = await api.approveSupervisorTask(taskId, decisionNote.trim() || undefined);
+      setDecisionNote('');
       setLatestTask(updated);
       setExecState('completed');
       await fetchTasksAndAgents();
     } catch (err: any) {
-      alert(`Approval failed: ${err.message}`);
+      toast.error(`Approval failed: ${cleanMessage(err)}`);
     }
   };
 
@@ -387,7 +393,22 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                       </p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  {!canApprove && (
+                    <div className="form-notice form-notice-info">
+                      Waiting for a commander. Operators can run triage but cannot approve a dispatch.
+                    </div>
+                  )}
+                  {canApprove && (
+                    <textarea
+                      className="note-input"
+                      placeholder="Note for the audit log (optional, recommended when declining)"
+                      value={decisionNote}
+                      onChange={(e) => setDecisionNote(e.target.value)}
+                      rows={2}
+                      maxLength={500}
+                    />
+                  )}
+                  <div style={{ display: canApprove ? 'flex' : 'none', gap: '8px' }}>
                     <button
                       className="btn-primary btn-block"
                       onClick={() => handleApprove(latestTask.id)}

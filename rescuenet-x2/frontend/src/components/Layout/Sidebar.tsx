@@ -1,60 +1,34 @@
 import React from 'react';
 import {
-  LayoutDashboard,
-  Layers,
-  Activity,
-  Bell,
-  LifeBuoy,
-  Users,
-  Building2,
-  FilePlus,
-  Award,
-  Bot,
-  Database,
-  Settings,
-  Radio,
+  LayoutDashboard, Layers, Activity, Bell, LifeBuoy, Users, Building2, FilePlus, Award, Bot, Database,
+  Settings, Radio, Home, ClipboardList, Siren, UserCircle, ShieldCheck, ScrollText, Truck,
 } from 'lucide-react';
+import type { NavSection, Page } from '../../auth/access';
 
 interface SidebarProps {
+  sections: NavSection[];
   activePage: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: Page) => void;
   isOpen: boolean;
   onClose: () => void;
   backendStatus: string;
-  incidentCount: number;
-  activeAlertCount: number;
+  badges: Partial<Record<Page, number>>;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  activePage,
-  onNavigate,
-  isOpen,
-  onClose,
-  backendStatus,
-  incidentCount,
-  activeAlertCount,
-}) => {
-  const navItems = [
-    { name: 'Overview', icon: LayoutDashboard, count: null },
-    { name: 'Flood Digital Twin', icon: Layers, count: null },
-    { name: 'Flood Forecasting', icon: Activity, count: null },
-    { name: 'Emergency Alerts', icon: Bell, count: activeAlertCount > 0 ? activeAlertCount : null },
-    { name: 'Rescue Operations', icon: LifeBuoy, count: incidentCount > 0 ? incidentCount : null },
-    { name: 'Volunteer Coordination', icon: Users, count: null },
-    { name: 'Facilities & Shelters', icon: Building2, count: null },
-    { name: 'Incident Reports', icon: FilePlus, count: null },
-    { name: 'Rescue Records', icon: Award, count: null },
-    { name: 'AI Supervisor', icon: Bot, count: null },
-    { name: 'Data & Models', icon: Database, count: null },
-    { name: 'Settings', icon: Settings, count: null },
-  ];
+const ICONS: Record<Page, React.ElementType> = {
+  Home, Overview: LayoutDashboard, 'Flood Digital Twin': Layers, 'Flood Forecasting': Activity,
+  'Emergency Alerts': Bell, 'Rescue Operations': LifeBuoy, 'My Missions': Truck,
+  'Volunteer Coordination': Users, 'Facilities & Shelters': Building2, 'Incident Reports': FilePlus,
+  'Report Emergency': Siren, 'My Reports': ClipboardList, 'Rescue Records': Award, 'AI Supervisor': Bot,
+  'Data & Models': Database, 'Admin Console': ShieldCheck, 'Audit Log': ScrollText, Settings, 'My Account': UserCircle,
+};
 
+export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNavigate, isOpen, onClose, backendStatus, badges }) => {
   return (
     <>
       {isOpen && <div className="sidebar-backdrop" onClick={onClose} />}
 
-      <aside className={`app-sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        {/* Brand Header */}
+      <aside className={`app-sidebar ${isOpen ? 'sidebar-open' : ''}`} aria-label="Main navigation">
         <div className="brand-section">
           <div className="brand-badge">
             <Radio size={20} className="pulse" />
@@ -63,51 +37,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="brand-name">
               RESCUENET <span className="text-cyan">X 2.0</span>
             </div>
-            <div className="brand-sub">FLOOD DIGITAL TWIN · AI OPS</div>
+            <div className="brand-sub">FLOOD DIGITAL TWIN</div>
           </div>
         </div>
 
-        {/* Navigation list */}
         <div className="sidebar-scroll">
-          <div className="nav-group-title">COMMAND MODULES</div>
-          <nav className="nav-items-list">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activePage === item.name;
-
-              return (
-                <button
-                  key={item.name}
-                  className={`nav-button ${isActive ? 'nav-active' : ''}`}
-                  onClick={() => {
-                    onNavigate(item.name);
-                    onClose();
-                  }}
-                >
-                  <Icon size={18} className="nav-icon" />
-                  <span className="nav-label">{item.name}</span>
-                  {item.count !== null && (
-                    <span className="nav-badge">{item.count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+          {sections.map((section) => (
+            <div key={section.title} className="nav-section">
+              <div className="nav-group-title">{section.title.toUpperCase()}</div>
+              <nav className="nav-items-list">
+                {section.pages.map((page) => {
+                  const Icon = ICONS[page] || Settings;
+                  const count = badges[page];
+                  const isActive = activePage === page;
+                  return (
+                    <button
+                      key={page}
+                      className={`nav-button ${isActive ? 'nav-active' : ''}`}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={() => {
+                        onNavigate(page);
+                        onClose();
+                      }}
+                    >
+                      <Icon size={18} className="nav-icon" />
+                      <span className="nav-label">{page}</span>
+                      {count ? <span className="nav-badge">{count}</span> : null}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
         </div>
 
-        {/* Sidebar Footer Connection Status */}
         <div className="sidebar-footer">
           <div className="status-connection-card">
             <div className="status-indicator">
               <span className={`status-dot ${backendStatus === 'Connected' ? 'dot-green' : 'dot-red'}`} />
               <div className="status-copy">
-                <strong>FastAPI Core</strong>
-                <span>{backendStatus}</span>
+                <strong>Server</strong>
+                <span>{backendStatus === 'Connected' ? 'Connected' : backendStatus}</span>
               </div>
             </div>
-            <span className="port-badge">:8000</span>
           </div>
-          <div className="system-version-text">RESCUENET X 2.0 · FULL-STACK BUILD</div>
         </div>
       </aside>
     </>

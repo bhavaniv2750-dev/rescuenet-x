@@ -1,17 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import './index.css';
+import './theme.css';
 import { api } from './api/client';
-import type {
-  Alert,
-  DashboardData,
-  Facility,
-  Incident,
-  RescueTeam,
-  RiverGauge,
-  Volunteer,
-} from './api/types';
+import type { Alert, DashboardData, Facility, Incident, RescueTeam, RiverGauge, Volunteer } from './api/types';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { canApprove, homePage, isDepartment, isStaff, navFor } from './auth/access';
+import type { Page } from './auth/access';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Topbar } from './components/Layout/Topbar';
+import { LoginPage } from './components/Auth/LoginPage';
+import { Toaster } from './components/UI/Toaster';
 import { OverviewView } from './components/Views/OverviewView';
 import { DigitalTwinView } from './components/Views/DigitalTwinView';
 import { ForecastingView } from './components/Views/ForecastingView';
@@ -24,14 +22,40 @@ import { RescueRecordsView } from './components/Views/RescueRecordsView';
 import { SupervisorView } from './components/Views/SupervisorView';
 import { DatasetsView } from './components/Views/DatasetsView';
 import { SettingsView } from './components/Views/SettingsView';
+import { PublicHomeView } from './components/Views/PublicHomeView';
+import { MyWorkView } from './components/Views/MyWorkView';
+import { AccountView } from './components/Views/AccountView';
+import { AdminConsoleView } from './components/Views/AdminConsoleView';
+import { toast } from './lib/toast';
 
-export function App() {
-  const [activePage, setActivePage] = useState<string>('Overview');
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [backendStatus, setBackendStatus] = useState<string>('Checking...');
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+const GUEST_KEY = 'rescuenet.guest';
 
-  // Core Data Stores
+function Shell() {
+  const { user, restoring, logout } = useAuth();
+  const role = user?.role ?? null;
+
+  // A signed-out visitor either sees the sign-in page or browses as a guest.
+  const [guest, setGuest] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(GUEST_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setGuestMode = (v: boolean) => {
+    setGuest(v);
+    try {
+      v ? sessionStorage.setItem(GUEST_KEY, '1') : sessionStorage.removeItem(GUEST_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const [activePage, setActivePage] = useState<Page>('Home');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('Checking...');
+  const [refreshing, setRefreshing] = useState(false);
+
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -41,93 +65,131 @@ export function App() {
   const [gauges, setGauges] = useState<RiverGauge[]>([]);
   const [catchmentsGeoJSON, setCatchmentsGeoJSON] = useState<any>(null);
 
-  // Quick Report Modal
-  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const dept = isDepartment(role);
+  const staff = isStaff(role);
+
+  // Go to the right landing page when the signed-in user changes (sign-in, sign-out).
+  useEffect(() => {
+    setActivePage(homePage(role));
+    if (user) setGuestMode(false);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If the user lands on a page their role does not have, send them home.
+  const sections = useMemo(() => navFor(role), [role]);
+  useEffect(() => {
+    const allowed = new Set(sections.flatMap((s) => s.pages));
+    if (!allowed.has(activePage)) setActivePage(homePage(role));
+  }, [sections, activePage, role]);
 
   const loadAllData = useCallback(async () => {
     setRefreshing(true);
     try {
-      // 1. Health check
       await api.checkHealth();
       setBackendStatus('Connected');
-
-      // 2. Fetch parallel data
-      const [
-        dash,
-        incRes,
-        altRes,
-        teamRes,
-        volRes,
-        facRes,
-        gaugeRes,
-        catchRes,
-      ] = await Promise.allSettled([
-        api.getDashboard(),
-        api.getIncidents(),
-        api.getAlerts(),
-        api.getTeams(),
-        api.getVolunteers(),
-        api.getFacilities(),
-        api.getRiverGauges(),
-        api.getCatchmentsGeoJSON(),
-      ]);
-
-      if (dash.status === 'fulfilled') setDashboardData(dash.value);
-      if (incRes.status === 'fulfilled') setIncidents(incRes.value.items);
-      if (altRes.status === 'fulfilled') setAlerts(altRes.value.items);
-      if (teamRes.status === 'fulfilled') setTeams(teamRes.value.items);
-      if (volRes.status === 'fulfilled') setVolunteers(volRes.value.items);
-      if (facRes.status === 'fulfilled') setFacilities(facRes.value.items);
-      if (gaugeRes.status === 'fulfilled') setGauges(gaugeRes.value.items);
-      if (catchRes.status === 'fulfilled') setCatchmentsGeoJSON(catchRes.value);
-    } catch (err) {
-      console.error('Backend connection error:', err);
+    } catch {
       setBackendStatus('Offline');
-    } finally {
       setRefreshing(false);
+      return;
     }
-  }, []);
+    // Ask only for what this role is allowed to see.
+    const jobs: Promise<unknown>[] = [
+      api.getAlerts().then((r) => setAlerts(r.items)),
+      api.getFacilities().then((r) => setFacilities(r.items)),
+      api.getRiverGauges().then((r) => setGauges(r.items)),
+      api.getCatchmentsGeoJSON().then(setCatchmentsGeoJSON),
+    ];
+    if (dept) {
+      jobs.push(api.getIncidents().then((r) => setIncidents(r.items)), api.getTeams().then((r) => setTeams(r.items)));
+    }
+    if (staff) {
+      jobs.push(api.getDashboard().then(setDashboardData), api.getVolunteers().then((r) => setVolunteers(r.items)));
+    }
+    await Promise.allSettled(jobs);
+    setRefreshing(false);
+  }, [dept, staff]);
 
-  // Initial load and periodic polling
   useEffect(() => {
+    if (!user && !guest) return;
     loadAllData();
     const interval = setInterval(loadAllData, 15000);
     return () => clearInterval(interval);
-  }, [loadAllData]);
+  }, [loadAllData, user, guest]);
 
-  const activeAlertsCount = alerts.filter((a) => a.status === 'ACTIVE').length;
-  const activeIncidentsCount = incidents.filter((i) => !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(i.status)).length;
+  const openIncidents = incidents.filter((i) => !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(i.status)).length;
+  const activeAlerts = alerts.filter((a) => a.status === 'ACTIVE').length;
+  const badges: Partial<Record<Page, number>> = {
+    'Emergency Alerts': activeAlerts || undefined,
+    'Rescue Operations': staff ? openIncidents || undefined : undefined,
+  };
+
+  if (restoring) {
+    return (
+      <div className="splash">
+        <div className="spinner" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (!user && !guest) {
+    return <LoginPage onContinueAsGuest={() => { setGuestMode(true); setActivePage('Home'); }} />;
+  }
+
+  const afterReport = () => {
+    toast.success('Report sent. The control room has been notified.');
+    loadAllData();
+    setActivePage(staff ? 'Rescue Operations' : user ? 'My Reports' : 'Home');
+  };
+
+  const goReport = () => setActivePage(dept && role !== 'RESCUE_OFFICER' ? 'Incident Reports' : 'Report Emergency');
+
+  const intakeOnly = role !== 'ADMIN' && role !== 'COMMANDER' && role !== 'OPERATOR';
 
   return (
     <div className="app-shell">
-      {/* Sidebar Navigation */}
       <Sidebar
+        sections={sections}
         activePage={activePage}
-        onNavigate={(page) => setActivePage(page)}
+        onNavigate={setActivePage}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         backendStatus={backendStatus}
-        incidentCount={activeIncidentsCount}
-        activeAlertCount={activeAlertsCount}
+        badges={badges}
       />
 
-      {/* Main Content Area */}
       <div className="app-main">
         <Topbar
           activePage={activePage}
+          user={user}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onRefresh={loadAllData}
-          onOpenReportModal={() => setShowReportModal(true)}
+          onReport={goReport}
+          onOpenAccount={() => setActivePage('My Account')}
+          onSignIn={() => setGuestMode(false)}
+          onSignOut={logout}
           refreshing={refreshing}
           backendStatus={backendStatus}
         />
 
-        <main className="page-viewport">
+        {guest && !user && (
+          <div className="guest-banner">
+            You are browsing without an account.{' '}
+            <button className="link-btn" onClick={() => setGuestMode(false)}>
+              Sign in
+            </button>{' '}
+            to track your reports.
+          </div>
+        )}
+
+        <main className="page-viewport" key={activePage}>
+          {activePage === 'Home' && (
+            <PublicHomeView alerts={alerts} gauges={gauges} facilities={facilities} userName={user?.full_name} onNavigate={setActivePage} />
+          )}
+
           {activePage === 'Overview' && (
             <OverviewView
               data={dashboardData}
               loading={refreshing && !dashboardData}
-              onNavigate={(page) => setActivePage(page)}
+              onNavigate={(page) => setActivePage(page as Page)}
               onSelectIncident={() => setActivePage('Rescue Operations')}
               catchmentsGeoJSON={catchmentsGeoJSON}
               incidents={incidents}
@@ -141,81 +203,58 @@ export function App() {
           {activePage === 'Flood Digital Twin' && (
             <DigitalTwinView
               catchmentsGeoJSON={catchmentsGeoJSON}
-              incidents={incidents}
-              teams={teams}
+              incidents={dept ? incidents : []}
+              teams={dept ? teams : []}
               facilities={facilities}
               gauges={gauges}
               alerts={alerts}
             />
           )}
 
-          {activePage === 'Flood Forecasting' && (
-            <ForecastingView initialForecast={dashboardData?.forecast_preview} />
-          )}
+          {activePage === 'Flood Forecasting' && <ForecastingView initialForecast={dashboardData?.forecast_preview} />}
 
-          {activePage === 'Emergency Alerts' && (
-            <AlertsView alerts={alerts} onRefresh={loadAllData} />
-          )}
+          {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} />}
 
           {activePage === 'Rescue Operations' && (
-            <RescueOperationsView
-              incidents={incidents}
-              teams={teams}
-              onRefresh={loadAllData}
-              onOpenReportModal={() => setShowReportModal(true)}
-            />
+            <RescueOperationsView incidents={incidents} teams={teams} onRefresh={loadAllData} onOpenReportModal={goReport} />
           )}
 
-          {activePage === 'Volunteer Coordination' && (
-            <VolunteersView volunteers={volunteers} onRefresh={loadAllData} />
-          )}
+          {activePage === 'My Missions' && <MyWorkView variant="missions" teamName={user?.team_id} />}
+          {activePage === 'My Reports' && <MyWorkView variant="reports" />}
 
-          {activePage === 'Facilities & Shelters' && (
-            <FacilitiesView facilities={facilities} onRefresh={loadAllData} />
-          )}
+          {activePage === 'Volunteer Coordination' && <VolunteersView volunteers={volunteers} onRefresh={loadAllData} />}
 
-          {activePage === 'Incident Reports' && (
-            <IncidentReportView
-              onSuccess={() => {
-                loadAllData();
-                setActivePage('Rescue Operations');
-              }}
-            />
+          {activePage === 'Facilities & Shelters' && <FacilitiesView facilities={facilities} onRefresh={loadAllData} />}
+
+          {(activePage === 'Incident Reports' || activePage === 'Report Emergency') && (
+            <IncidentReportView intakeOnly={intakeOnly || activePage === 'Report Emergency'} onSuccess={afterReport} />
           )}
 
           {activePage === 'Rescue Records' && <RescueRecordsView />}
 
-          {activePage === 'AI Supervisor' && <SupervisorView incidents={incidents} />}
+          {activePage === 'AI Supervisor' && <SupervisorView incidents={incidents} canApprove={canApprove(role)} />}
 
           {activePage === 'Data & Models' && <DatasetsView />}
 
-          {activePage === 'Settings' && (
-            <SettingsView backendStatus={backendStatus} onRefresh={loadAllData} />
-          )}
+          {activePage === 'Admin Console' && <AdminConsoleView canManageUsers teams={teams} />}
+          {activePage === 'Audit Log' && <AdminConsoleView canManageUsers={false} teams={teams} />}
+
+          {activePage === 'Settings' && <SettingsView backendStatus={backendStatus} onRefresh={loadAllData} />}
+
+          {activePage === 'My Account' && <AccountView />}
         </main>
       </div>
 
-      {/* Global Report Incident Modal */}
-      {showReportModal && (
-        <div className="modal-backdrop">
-          <div className="modal-box" style={{ maxWidth: '650px' }}>
-            <div className="modal-header">
-              <h3>Report Emergency Flood Incident</h3>
-              <button className="icon-btn" onClick={() => setShowReportModal(false)}>✕</button>
-            </div>
-            <div style={{ padding: '16px' }}>
-              <IncidentReportView
-                onSuccess={() => {
-                  setShowReportModal(false);
-                  loadAllData();
-                  setActivePage('Rescue Operations');
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <Shell />
+      <Toaster />
+    </AuthProvider>
   );
 }
 

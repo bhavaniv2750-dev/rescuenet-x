@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Volunteer } from '../../api/types';
 import { Shield, Plus, CheckCircle, XCircle } from 'lucide-react';
@@ -31,7 +32,7 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
       setNotice('Volunteer registered successfully! Status is pending verification.');
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -43,7 +44,7 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, onRe
       setNotice(`Updated verification for ${v.name}: ${!v.is_verified ? 'VERIFIED' : 'UNVERIFIED'}`);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 

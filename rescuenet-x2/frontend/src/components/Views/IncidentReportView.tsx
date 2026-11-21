@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, assetUrl } from '../../api/client';
 import type { Incident, WaterDepth } from '../../api/types';
+import { cleanMessage, toast } from '../../lib/toast';
 import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
 import { actionsFor, humanStatus, statusPillClass } from '../../lib/lifecycle';
 import {
@@ -23,6 +24,8 @@ import {
 
 interface IncidentReportViewProps {
   onSuccess: () => void;
+  /** Citizens, volunteers and officers can file a report but cannot browse everyone's reports. */
+  intakeOnly?: boolean;
 }
 
 const PRESET_LOCATIONS = [
@@ -33,7 +36,7 @@ const PRESET_LOCATIONS = [
   { name: 'Hebbal Flyover Drain', lat: 13.0358, lng: 77.597 },
 ];
 
-export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSuccess }) => {
+export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSuccess, intakeOnly = false }) => {
   const [activeTab, setActiveTab] = useState<'form' | 'directory'>('form');
 
   // Form State
@@ -71,6 +74,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
   const [loadingDirectory, setLoadingDirectory] = useState(false);
 
   const fetchIncidents = async () => {
+    if (intakeOnly) return; // not allowed to list everyone's reports
     setLoadingDirectory(true);
     try {
       const res = await api.getIncidents({
@@ -182,7 +186,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       setSelectedIncident(newInc);
       setActiveTab('directory');
     } catch (err: any) {
-      alert(`Submission error: ${err.message}`);
+      toast.error(`Could not submit: ${cleanMessage(err)}`);
     } finally {
       setSubmitting(false);
     }
@@ -195,7 +199,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       setIncidents((prev) => prev.map((inc) => (inc.id === incidentId ? updated : inc)));
       onSuccess();
     } catch (err: any) {
-      alert(`Status update failed: ${err.message}`);
+      toast.error(`Status update failed: ${cleanMessage(err)}`);
     }
   };
 
@@ -226,10 +230,12 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         <div>
           <h2>Incident Reporting, Triage & Verification</h2>
           <p>
-            Ground-truth emergency intake portal. Citizen reports are validated, geotagged, linked to
-            field photographic evidence, and routed to rescue command.
+            {intakeOnly
+              ? 'Tell the rescue control room what is happening and where. If anyone is in immediate danger, call 112 first.'
+              : 'Emergency intake. Reports are geotagged, can carry a photo, and go to the rescue control room for verification.'}
           </p>
         </div>
+        {!intakeOnly && (
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             className={activeTab === 'form' ? 'btn-primary' : 'btn-secondary'}
@@ -244,6 +250,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
             <Eye size={16} /> Incident Directory ({incidents.length})
           </button>
         </div>
+        )}
       </div>
 
       {submittedNotice && (
@@ -259,7 +266,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         <div className="panel form-panel" style={{ maxWidth: '850px', margin: '0 auto' }}>
           <div className="panel-title-bar">
             <div>
-              <h3>Emergency Incident Intake Form</h3>
+              <h3>Emergency report</h3>
               <p>Enter ground-truth field observations and attach photographic evidence</p>
             </div>
             <AlertTriangle size={18} className="text-amber" />
@@ -267,7 +274,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
           <form onSubmit={handleSubmit} className="incident-intake-form" style={{ marginTop: '16px' }}>
             <label>
-              Incident Headline / Emergency Summary *
+              What is happening? (short summary) *
               <input
                 required
                 minLength={5}
@@ -522,10 +529,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
               style={{ padding: '12px', fontSize: '14px', fontWeight: 600 }}
             >
               {submitting
-                ? 'Validating & Persisting Incident...'
+                ? 'Sending…'
                 : uploadingImage
-                ? 'Uploading Image Attachment...'
-                : 'Transmit Incident Report to Dispatch'}
+                ? 'Uploading photo…'
+                : 'Send report'}
             </button>
           </form>
         </div>

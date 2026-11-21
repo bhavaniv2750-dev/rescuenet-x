@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.api.deps import actor_name, get_current_user, require_roles, utcnow_naive
 from app.core.security import (
     PORTALS,
@@ -128,7 +129,19 @@ def _check_password(pw: str) -> None:
 # ---------- public endpoints ----------
 @router.get("/portals")
 def list_portals():
+    demo = settings.SEED_DEMO_USERS
     return {
+        "demo_mode": demo,
+        # Shown on the sign-in page only while demo accounts are enabled (development / project demo).
+        "demo_accounts": [
+            {"portal": ROLE_PORTAL[role], "username": username, "role": role, "label": label}
+            for username, label, role in [
+                ("citizen", "Citizen", "CITIZEN"), ("volunteer", "Volunteer", "VOLUNTEER"),
+                ("operator", "Control room operator", "OPERATOR"), ("officer", "Rescue officer", "RESCUE_OFFICER"),
+                ("commander", "Incident commander", "COMMANDER"), ("admin", "Administrator", "ADMIN"),
+            ]
+        ] if demo else [],
+        "demo_password": settings.DEMO_USER_PASSWORD if demo else None,
         "portals": [
             {"id": "public", "name": "Citizens & Volunteers", "roles": PORTALS["public"], "self_signup": True},
             {"id": "operations", "name": "Rescue Operations Department", "roles": PORTALS["operations"], "self_signup": False},

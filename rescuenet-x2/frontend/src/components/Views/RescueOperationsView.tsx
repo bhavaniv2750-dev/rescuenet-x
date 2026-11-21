@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Incident, RescueTeam } from '../../api/types';
 import { Plus } from 'lucide-react';
@@ -38,7 +39,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
       setActionNotice(`Incident ${incId} moved to ${humanStatus(newStatus)}.`);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -52,7 +53,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
       );
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
@@ -71,7 +72,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
       setSelectedTeamId('');
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      toast.error(cleanMessage(err));
     }
   };
 
