@@ -7,6 +7,7 @@ interface TopbarProps {
   onRefresh: () => void;
   onOpenReportModal: () => void;
   refreshing: boolean;
+  backendStatus: string;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -15,7 +16,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   onRefresh,
   onOpenReportModal,
   refreshing,
+  backendStatus,
 }) => {
+  const online = backendStatus === 'Connected';
   return (
     <header className="app-topbar">
       <div className="topbar-left">
@@ -37,10 +40,10 @@ export const Topbar: React.FC<TopbarProps> = ({
           <span>Bengaluru, Karnataka</span>
         </div>
 
-        {/* Live Data Mode Tag */}
-        <div className="live-data-indicator">
-          <span className="status-dot dot-green" />
-          <span>Real Telemetry & SQLite</span>
+        {/* Backend connection (data is polled every 15 s; there is no live sensor feed) */}
+        <div className="live-data-indicator" title="Data refreshes from the backend every 15 seconds">
+          <span className={`status-dot ${online ? 'dot-green' : 'dot-red'}`} />
+          <span>{online ? 'Backend connected' : backendStatus}</span>
         </div>
 
         {/* Refresh Action Button */}
@@ -48,7 +51,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="btn-icon"
           onClick={onRefresh}
           disabled={refreshing}
-          title="Refresh All Real-time Data"
+          title="Refresh data now"
         >
           <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
         </button>

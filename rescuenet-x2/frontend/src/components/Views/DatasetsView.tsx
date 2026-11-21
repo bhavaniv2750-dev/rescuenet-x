@@ -367,7 +367,7 @@ export const DatasetsView: React.FC = () => {
             </h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
               Verified repository of <strong>{verifiedImgCount} field & remote sensing flood disaster images</strong> ({uniqueImgCount} unique files, {duplicateCount} duplicate pair flagged) stored in the{' '}
-              <code>flood/</code> directory. Real-time serving, pagination, duplicate detection, and computer vision preprocessing.
+              <code>flood/</code> directory. Image serving, pagination, duplicate detection, and computer vision preprocessing.
             </p>
           </div>
           <div style={{ textAlign: 'right' }}>

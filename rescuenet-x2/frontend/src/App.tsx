@@ -88,9 +88,6 @@ export function App() {
     }
   }, []);
 
-  // Persistent dismissed alert tracking to avoid duplicate popups
-  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(new Set());
-
   // Initial load and periodic polling
   useEffect(() => {
     loadAllData();
@@ -100,30 +97,6 @@ export function App() {
 
   const activeAlertsCount = alerts.filter((a) => a.status === 'ACTIVE').length;
   const activeIncidentsCount = incidents.filter((i) => !['RESOLVED', 'DUPLICATE', 'CANCELLED'].includes(i.status)).length;
-
-  // Newest qualifying high/critical emergency alert that has not been dismissed in this session
-  const newestEmergencyAlert = alerts.find(
-    (a) =>
-      a.status === 'ACTIVE' &&
-      (a.severity === 'CRITICAL' || a.severity === 'HIGH') &&
-      !dismissedAlertIds.has(a.id)
-  );
-
-  // Optional non-blocking browser notification
-  useEffect(() => {
-    if (
-      newestEmergencyAlert &&
-      typeof window !== 'undefined' &&
-      'Notification' in window &&
-      Notification.permission === 'granted'
-    ) {
-      try {
-        new Notification(`[${newestEmergencyAlert.severity}] ${newestEmergencyAlert.title}`, {
-          body: `${newestEmergencyAlert.area}: ${newestEmergencyAlert.message}`,
-        });
-      } catch {}
-    }
-  }, [newestEmergencyAlert?.id]);
 
   return (
     <div className="app-shell">
@@ -146,6 +119,7 @@ export function App() {
           onRefresh={loadAllData}
           onOpenReportModal={() => setShowReportModal(true)}
           refreshing={refreshing}
+          backendStatus={backendStatus}
         />
 
         <main className="page-viewport">
@@ -220,121 +194,6 @@ export function App() {
           )}
         </main>
       </div>
-
-      {/* In-App Emergency Alert Notification Popup (Mounted at Application Shell Level) */}
-      {newestEmergencyAlert && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="emergency-toast-banner"
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            maxWidth: '450px',
-            zIndex: 9999,
-            background:
-              newestEmergencyAlert.severity === 'CRITICAL'
-                ? 'rgba(69, 10, 10, 0.96)'
-                : 'rgba(67, 20, 7, 0.96)',
-            backdropFilter: 'blur(12px)',
-            border: `1px solid ${
-              newestEmergencyAlert.severity === 'CRITICAL' ? '#ef4444' : '#f97316'
-            }`,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 16px rgba(239, 68, 68, 0.3)',
-            borderRadius: '8px',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{
-                  background:
-                    newestEmergencyAlert.severity === 'CRITICAL' ? '#dc2626' : '#ea580c',
-                  color: '#ffffff',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  letterSpacing: '0.05em',
-                }}
-              >
-                {newestEmergencyAlert.severity} ALERT
-              </span>
-              <span className="font-mono text-xs text-muted">{newestEmergencyAlert.id}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setDismissedAlertIds((prev) => new Set([...prev, newestEmergencyAlert.id]));
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#cbd5e1',
-                fontSize: '16px',
-                cursor: 'pointer',
-                padding: '2px 6px',
-              }}
-              title="Dismiss popup notification (does not resolve alert)"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div style={{ fontWeight: 600, fontSize: '14px', color: '#f8fafc' }}>
-            {newestEmergencyAlert.title}
-          </div>
-
-          <div style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: '1.4' }}>
-            {newestEmergencyAlert.message}
-          </div>
-
-          <div
-            style={{
-              fontSize: '11px',
-              color: '#94a3b8',
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '4px',
-            }}
-          >
-            <span>📍 {newestEmergencyAlert.area} ({newestEmergencyAlert.radius_km} km target radius)</span>
-            <span>
-              {new Date(newestEmergencyAlert.created_at).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-            <button
-              className="btn-primary"
-              style={{ flex: 1, fontSize: '12px', padding: '6px 12px' }}
-              onClick={() => {
-                setActivePage('Emergency Alerts');
-                setDismissedAlertIds((prev) => new Set([...prev, newestEmergencyAlert.id]));
-              }}
-            >
-              View Alert Details
-            </button>
-            <button
-              className="btn-secondary"
-              style={{ fontSize: '12px', padding: '6px 12px' }}
-              onClick={() => {
-                setDismissedAlertIds((prev) => new Set([...prev, newestEmergencyAlert.id]));
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Global Report Incident Modal */}
       {showReportModal && (

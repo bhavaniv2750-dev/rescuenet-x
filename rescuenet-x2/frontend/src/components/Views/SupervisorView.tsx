@@ -168,7 +168,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
         <div className="panel trigger-card">
           <div className="panel-title-bar">
             <div>
-              <h3>Execute Autonomous Triage Workflow</h3>
+              <h3>Run Supervisor Triage</h3>
               <p>Dispatch the multi-agent swarm to evaluate an incident</p>
             </div>
             <Bot className="text-cyan" size={20} />
@@ -248,7 +248,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                   <RefreshCw className="animate-spin" size={16} /> Running Ollama Inference
                 </div>
                 <div style={{ marginTop: '4px', fontSize: '12px', color: '#a5f3fc' }}>
-                  Streaming verified incident geometry, closest squads, and nearest IndoFloods river gauge to Qwen 4B Instruct...
+                  Sending incident location, nearest available teams and the nearest IndoFloods river gauge to the local Qwen 4B model...
                 </div>
               </div>
             )}
@@ -383,7 +383,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
                       <strong>MANDATORY HUMAN AUTHORIZATION REQUIRED</strong>
                       <p>
                         High-consequence decision involves life safety & evacuation dispatch.
-                        Autonomous dispatch is gated until human commander authorization.
+                        Dispatch is blocked until a commander approves.
                       </p>
                     </div>
                   </div>
@@ -428,7 +428,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents }) => 
       <div className="panel audit-table-panel" style={{ marginTop: '20px' }}>
         <div className="panel-title-bar">
           <div>
-            <h3>Autonomous Task Execution Audit Trail</h3>
+            <h3>Supervisor Task History</h3>
             <p>Persistent audit logging stored in SQLite</p>
           </div>
         </div>

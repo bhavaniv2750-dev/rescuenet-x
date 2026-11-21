@@ -545,12 +545,12 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
 
             <div className="form-row">
               <label>
-                Live Telemetry Polling Rate
+                Data Refresh Interval
                 <select
                   value={appearance.refreshInterval}
                   onChange={(e) => setAppearance({ ...appearance, refreshInterval: e.target.value })}
                 >
-                  <option value="15">Every 15 Seconds (Real-Time Disaster Ops)</option>
+                  <option value="15">Every 15 Seconds</option>
                   <option value="30">Every 30 Seconds (Balanced Telemetry)</option>
                   <option value="60">Every 60 Seconds (Low Network Bandwidth)</option>
                 </select>
@@ -723,7 +723,7 @@ export const SettingsView: React.FC<SettingsViewProps> = () => {
                   Flood Digital Twin + RescueNet X 2.0
                 </div>
                 <div className="text-xs text-muted">
-                  AI-Powered Autonomous Disaster Intelligence & Emergency Response Platform
+                  Flood Digital Twin and AI-Assisted Emergency Response Platform
                 </div>
               </div>
             </div>

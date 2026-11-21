@@ -32,7 +32,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return (
       <div className="view-loading">
         <div className="spinner" />
-        <p>Loading real-time command center telemetry...</p>
+        <p>Loading command center data...</p>
       </div>
     );
   }
@@ -170,7 +170,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="panel-title-bar">
               <div>
                 <h3>Priority Triage Queue</h3>
-                <p>Real-time field reports requiring response</p>
+                <p>Field reports and LoRa SOS packets requiring response</p>
               </div>
               <button className="text-link" onClick={() => onNavigate('Rescue Operations')}>
                 View all ({summary?.active_incidents || 0}) →

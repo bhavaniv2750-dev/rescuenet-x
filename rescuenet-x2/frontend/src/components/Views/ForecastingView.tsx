@@ -339,7 +339,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
           ) : (
             <div className="empty-forecast-prompt">
               <Activity size={36} className="text-muted" />
-              <p>Adjust inputs and click "Compute AI Flood Forecast" to run real-time inference.</p>
+              <p>Adjust inputs and click "Compute AI Flood Forecast" to run the model.</p>
             </div>
           )}
         </div>
