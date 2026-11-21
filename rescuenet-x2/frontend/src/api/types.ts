@@ -158,19 +158,27 @@ export interface FloodPredictionResult {
     chronological_holdout_accuracy?: number;
     chronological_confusion_matrix?: number[][];
     class_distribution?: {
-      total: number;
-      negative_count: number;
-      positive_count: number;
-      positive_ratio: number;
+      total_records: number;
+      non_flood_class_0: number;
+      flood_class_1: number;
+      flood_prevalence_pct: number;
     };
-    validation_audit?: {
-      separation_threshold: string;
-      dataset_origin: string;
-      horizon_nature: string;
-    };
+    validation_audit?: Record<string, string>;
+    evaluation_suite?: Record<string, EvaluationResult>;
+    model_inputs?: string[];
     feature_importances: Record<string, number>;
   };
   advisory: string;
+  gauge_rule_triggered?: boolean;
+}
+
+export interface EvaluationResult {
+  description: string;
+  accuracy_mean: number;
+  accuracy_std: number;
+  f1_mean: number;
+  recall_mean: number;
+  roc_auc_mean: number;
 }
 
 export interface RiverGauge {
@@ -258,6 +266,8 @@ export interface ModelItem {
   accuracy: number | null;
   roc_auc: number | null;
   cv_5fold_accuracy_mean?: number | null;
+  cv_5fold_accuracy_std?: number | null;
+  f1_score?: number | null;
   confusion_matrix?: number[][] | null;
   class_distribution?: {
     total: number;

@@ -256,7 +256,7 @@ export const DatasetsView: React.FC = () => {
                   {m.cv_5fold_accuracy_mean !== undefined && m.cv_5fold_accuracy_mean !== null && (
                     <div className="model-meta-row">
                       <span>5-Fold Stratified CV:</span>
-                      <strong className="font-mono text-cyan">{(m.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±0.0%)</strong>
+                      <strong className="font-mono text-cyan">{(m.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±{((m.cv_5fold_accuracy_std ?? 0) * 100).toFixed(1)}%)</strong>
                     </div>
                   )}
                   {m.confusion_matrix && (

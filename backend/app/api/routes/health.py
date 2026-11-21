@@ -49,9 +49,9 @@ def health_check(db: Session = Depends(get_db)):
         "ml_service": {
             "status": ml_status,
             "model_architecture": metrics.get("model_architecture", "RandomForestClassifier(n_estimators=100, max_depth=6)"),
-            "training_samples": metrics.get("training_samples", 800),
-            "test_samples": metrics.get("test_samples", 200),
-            "test_accuracy": metrics.get("accuracy", 1.0),
+            "training_samples": metrics.get("training_samples"),
+            "test_samples": metrics.get("test_samples"),
+            "test_accuracy": metrics.get("accuracy"),
             "dataset_source": metrics.get("dataset_source", "clean_flood_prediction_data.csv"),
             "feature_names": ["rainfall_mm", "water_level_m", "humidity_pct", "temperature_c"],
             "validation_note": "Evaluated on stratified holdout test split (200 records). 30-60m horizons are hydrological scenario extrapolations, not field-validated predictions.",
