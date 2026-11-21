@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
-from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask
+from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask, User
 from app.schemas.domain import SupervisorTaskDecision, SupervisorTaskOut, SupervisorTaskRequest
 from app.services import incident_lifecycle as lifecycle
 from app.services.audit import record_audit
@@ -60,7 +62,7 @@ AGENTS_ROSTER = [
 ]
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(require_roles(*DEPT))])
 def list_agents():
     health = ollama_supervisor_service.check_health()
     return {
@@ -79,13 +81,13 @@ def list_agents():
     }
 
 
-@router.get("/supervisor/health")
+@router.get("/supervisor/health", dependencies=[Depends(require_roles(*DEPT))])
 def get_supervisor_health():
     """Check connectivity and model availability of local Ollama server."""
     return ollama_supervisor_service.check_health()
 
 
-@router.get("/tasks")
+@router.get("/tasks", dependencies=[Depends(require_roles(*OPS))])
 def list_supervisor_tasks(db: Session = Depends(get_db)):
     tasks = db.query(SupervisorTask).order_by(SupervisorTask.created_at.desc()).all()
     return {
@@ -94,7 +96,7 @@ def list_supervisor_tasks(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED)
+@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
 async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session = Depends(get_db)):
     # 1. Fetch incident or handle prospective / no-incident context
     incident = None
@@ -186,6 +188,13 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
     return SupervisorTaskOut.model_validate(task)
 
 
+def _decider(payload: SupervisorTaskDecision, user) -> SupervisorTaskDecision:
+    """The decision is recorded under the signed-in commander's name."""
+    if isinstance(user, User):
+        return payload.model_copy(update={"commander": f"{user.full_name} ({user.username})"})
+    return payload
+
+
 def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
     task = db.query(SupervisorTask).filter(SupervisorTask.id == task_id).first()
     if not task:
@@ -196,8 +205,10 @@ def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
 
 
 @router.post("/tasks/{task_id}/approve", response_model=SupervisorTaskOut)
-def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db)):
+def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
+                            user: User = Depends(require_roles(*APPROVERS))):
     """Commander approves the plan. The linked incident is dispatched to the suggested team, if one is free."""
+    payload = _decider(payload, user)
     task = _get_pending_task(db, task_id)
     now = datetime.now(timezone.utc)
     task.status = "APPROVED"
@@ -225,8 +236,10 @@ def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = Supe
 
 
 @router.post("/tasks/{task_id}/decline", response_model=SupervisorTaskOut)
-def decline_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db)):
+def decline_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
+                            user: User = Depends(require_roles(*APPROVERS))):
     """Commander declines the plan. The linked incident goes to REJECTED and can be re-queued."""
+    payload = _decider(payload, user)
     task = _get_pending_task(db, task_id)
     task.status = "DECLINED"
     task.requires_human_approval = False

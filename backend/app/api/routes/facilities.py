@@ -2,6 +2,8 @@ import math
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
 from app.models.entities import Facility
 from app.schemas.domain import FacilityCreate, FacilityOut
@@ -54,7 +56,7 @@ def list_facilities(
         "total_occupancy": sum(f.current_occupancy for f in facilities),
     }
 
-@router.post("/", response_model=FacilityOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=FacilityOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
 def create_facility(payload: FacilityCreate, db: Session = Depends(get_db)):
     count = db.query(Facility).count()
     new_id = f"FAC-{payload.facility_type[:4].upper()}-{count + 1:02d}"

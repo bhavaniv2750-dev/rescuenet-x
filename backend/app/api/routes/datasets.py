@@ -12,6 +12,9 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import DatasetRegistry
 
+from app.api.deps import require_roles
+from app.core.security import DEPT
+
 router = APIRouter()
 
 KNOWN_DUPLICATE_FILES = {"image_0216.jpg": "image_0301.jpg", "image_0301.jpg": "image_0216.jpg"}
@@ -93,7 +96,7 @@ def count_csv_records(csv_path: Path) -> int:
     except Exception:
         return 0
 
-@router.get("/inventory")
+@router.get("/inventory", dependencies=[Depends(require_roles(*DEPT))])
 def get_dataset_inventory(db: Session = Depends(get_db)):
     """Dynamically verifies local filesystem presence and actual record/file counts for all registered datasets."""
     datasets = db.query(DatasetRegistry).all()
@@ -229,7 +232,7 @@ def _vision_model_entry() -> Dict[str, Any]:
     }
 
 
-@router.get("/models")
+@router.get("/models", dependencies=[Depends(require_roles(*DEPT))])
 def get_models_status():
     """Returns actual loaded machine learning models and computer vision configuration."""
     from app.ml.flood_model import MODEL_FILE, METRICS_FILE, flood_ml_service
@@ -271,7 +274,7 @@ def get_models_status():
         "vision_model_configured": models[-1]["is_loaded"] or models[-1]["status"] == "READY",
     }
 
-@router.get("/images")
+@router.get("/images", dependencies=[Depends(require_roles(*DEPT))])
 def get_flood_images_paginated(
     page: int = Query(1, ge=1, description="Page number starting at 1"),
     page_size: int = Query(12, ge=1, le=48, description="Number of images per page"),
@@ -476,7 +479,7 @@ def _vision_ready() -> bool:
     return flood_vision_service.status()["ready"]
 
 
-@router.get("/images/inspect/{filename}")
+@router.get("/images/inspect/{filename}", dependencies=[Depends(require_roles(*DEPT))])
 def inspect_image_metadata(filename: str):
     """Inspects technical image metadata, duplicate status, and computer-vision preprocessing readiness."""
     safe_name = os.path.basename(filename)
@@ -551,7 +554,7 @@ def inspect_image_metadata(filename: str):
         "preprocess_url": f"{settings.API_V1_STR}/datasets/images/preprocess/{safe_name}",
     }
 
-@router.post("/images/preprocess/{filename}")
+@router.post("/images/preprocess/{filename}", dependencies=[Depends(require_roles(*DEPT))])
 def preprocess_flood_image(filename: str):
     """Executes verified image preprocessing (dimension normalization, tensor shape computation, and integrity validation)."""
     safe_name = os.path.basename(filename)

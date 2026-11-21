@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.api.deps import actor_name, require_roles
+from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
 from app.models.entities import Alert
 from app.schemas.domain import AlertCreate, AlertOut
@@ -20,7 +22,7 @@ def list_alerts(status_filter: Optional[str] = None, db: Session = Depends(get_d
         "active_count": sum(1 for a in items if a.status == "ACTIVE"),
     }
 
-@router.post("/", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=AlertOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
 def create_alert(payload: AlertCreate, db: Session = Depends(get_db)):
     count = db.query(Alert).count()
     new_id = f"ALT-2026-{count + 1:02d}"
@@ -43,7 +45,7 @@ def create_alert(payload: AlertCreate, db: Session = Depends(get_db)):
     db.refresh(alert)
     return AlertOut.model_validate(alert)
 
-@router.post("/{alert_id}/acknowledge", response_model=AlertOut)
+@router.post("/{alert_id}/acknowledge", response_model=AlertOut, dependencies=[Depends(require_roles("ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"))])
 def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
@@ -57,7 +59,7 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     db.refresh(alert)
     return AlertOut.model_validate(alert)
 
-@router.post("/{alert_id}/resolve", response_model=AlertOut)
+@router.post("/{alert_id}/resolve", response_model=AlertOut, dependencies=[Depends(require_roles(*OPS))])
 def resolve_alert(alert_id: str, db: Session = Depends(get_db)):
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:

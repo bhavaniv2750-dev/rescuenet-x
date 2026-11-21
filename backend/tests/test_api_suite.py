@@ -6,8 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
 from app.main import app
+from tests.conftest import sign_in
 
-client = TestClient(app)
+client = sign_in(TestClient(app), "commander")
 
 def test_full_system():
     print("=== 1. Health Endpoint ===")

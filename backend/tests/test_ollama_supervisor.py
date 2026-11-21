@@ -27,6 +27,7 @@ from app.api.routes.agents import approve_supervisor_task, execute_supervisor_tr
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.main import app
+from tests.conftest import sign_in
 from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask
 from app.schemas.domain import SupervisorTaskRequest
 from app.services.ollama_service import (
@@ -51,7 +52,7 @@ def db_session():
 def api_client():
     """FastAPI TestClient fixture."""
     with TestClient(app) as client:
-        yield client
+        yield sign_in(client, "commander")
 
 
 # =====================================================================

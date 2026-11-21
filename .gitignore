@@ -72,3 +72,7 @@ backend/uploads/*
 # Vision model weights (downloaded by backend/scripts/download_vision_model.py)
 backend/app/ml/artifacts/vision/*.onnx
 backend/app/ml/artifacts/vision/*.part
+
+# Local secrets created at first start
+backend/.jwt_secret
+backend/.admin_password

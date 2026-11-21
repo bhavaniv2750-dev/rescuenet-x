@@ -41,6 +41,7 @@ class Incident(Base):
     duplicate_of = Column(String(50), nullable=True)
     # Depth as judged by the person reporting: ANKLE, KNEE, WAIST, CHEST_OR_DEEPER or UNKNOWN
     reported_water_depth = Column(String(20), nullable=True)
+    reporter_user_id = Column(Integer, nullable=True, index=True)  # set when a logged-in user reports
     # JSON summary of the photo analysis (PREDICTED), if a photo was analysed
     photo_analysis = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
@@ -189,3 +190,25 @@ class DatasetRegistry(Base):
     coverage = Column(String(150), nullable=False)
     description = Column(Text, nullable=False)
     last_synced = Column(DateTime, default=utc_now)
+
+
+class User(Base):
+    """Login account. Role decides which portal the user signs in through and what they may do."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(60), nullable=False, unique=True, index=True)
+    full_name = Column(String(120), nullable=False)
+    email = Column(String(120), nullable=True)
+    phone = Column(String(30), nullable=True)
+    # ADMIN | COMMANDER | OPERATOR | RESCUE_OFFICER | VOLUNTEER | CITIZEN
+    role = Column(String(20), nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    team_id = Column(String(50), nullable=True)        # rescue officers: their team
+    volunteer_id = Column(String(50), nullable=True)   # volunteers: their volunteer record
+    is_active = Column(Boolean, nullable=False, default=True)
+    failed_logins = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)

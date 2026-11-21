@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
 from app.db.beacon_registry import BENGALURU_HOTSPOTS
 from app.db.migrate import upgrade_schema
+from app.db.seed_users import seed_users
 from app.models.entities import (
     Alert,
     Beacon,
@@ -18,6 +19,11 @@ from app.models.entities import (
 )
 
 def init_db():
+    _init_core()
+    seed_users()
+
+
+def _init_core():
     print("[init_db] Creating all database tables...")
     Base.metadata.create_all(bind=engine)
     added = upgrade_schema(engine)

@@ -7,9 +7,10 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
+from tests.conftest import sign_in
 from app.services.vision_service import flood_vision_service
 
-client = TestClient(app)
+client = sign_in(TestClient(app), "commander")
 needs_model = pytest.mark.skipif(not flood_vision_service.status()["ready"], reason="vision weights not downloaded")
 
 

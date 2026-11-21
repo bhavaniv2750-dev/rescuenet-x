@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from app.api.deps import actor_name, actor_role, get_optional_user, require_roles
 from app.core.config import settings
+from app.core.security import DEPT, OPS
+from app.models.entities import User
+from fastapi import Header
 from app.db.session import get_db
 from datetime import datetime, timedelta, timezone
 
@@ -81,6 +85,9 @@ def get_incident_image(filename: str):
         raise HTTPException(status_code=404, detail="Incident attachment image not found")
     return FileResponse(file_path)
 
+FIELD_STATES = ("IN_TRANSIT", "ON_SCENE", "RESOLVED")
+
+
 def raise_if_dispatch_blocked(inc: Incident, target: str) -> None:
     """Dispatch of a gated incident is only possible through POST /agents/tasks/{id}/approve."""
     if target != "DISPATCHED":
@@ -106,7 +113,7 @@ def get_lifecycle():
 
 
 @router.get("/beacons", response_model=dict)
-def list_beacons(db: Session = Depends(get_db)):
+def list_beacons(db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
     beacons = db.query(Beacon).order_by(Beacon.beacon_id).all()
     return {
         "items": [BeaconOut.model_validate(b) for b in beacons],
@@ -116,8 +123,15 @@ def list_beacons(db: Session = Depends(get_db)):
 
 
 @router.post("/lora", status_code=status.HTTP_201_CREATED)
-def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db)):
-    """Turn a LoRa distress packet into an incident (or refresh the open one for that beacon)."""
+def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db), x_gateway_key: Optional[str] = Header(None)):
+    """Turn a LoRa distress packet into an incident (or refresh the open one for that beacon).
+
+    Gateways are devices, not people, so they do not sign in. When LORA_GATEWAY_KEY is set,
+    packets must carry it in the X-Gateway-Key header.
+    """
+    expected = os.getenv("LORA_GATEWAY_KEY")
+    if expected and x_gateway_key != expected:
+        raise HTTPException(status_code=401, detail="Missing or wrong gateway key")
     rms = None
     if packet.latitude is not None and packet.longitude is not None:
         lat, lon, method = packet.latitude, packet.longitude, "GPS"
@@ -197,11 +211,22 @@ def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db)):
 
 
 @router.post("/{incident_id}/state", response_model=IncidentOut)
-def change_incident_state(incident_id: str, payload: IncidentStateChange, db: Session = Depends(get_db)):
+def change_incident_state(
+    incident_id: str,
+    payload: IncidentStateChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*DEPT)),
+):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     target = lifecycle.normalize(payload.to_status)
+    if getattr(user, "role", None) == "RESCUE_OFFICER":
+        # Field officers only report progress on missions given to their own team.
+        if not inc.assigned_team_id or inc.assigned_team_id != user.team_id:
+            raise HTTPException(status_code=403, detail="This incident is not assigned to your team")
+        if target not in FIELD_STATES:
+            raise HTTPException(status_code=403, detail=f"Rescue officers can set only {', '.join(FIELD_STATES)}")
     if target == "DUPLICATE":
         if not payload.duplicate_of:
             raise HTTPException(status_code=422, detail="duplicate_of is required when marking an incident as DUPLICATE")
@@ -209,14 +234,14 @@ def change_incident_state(incident_id: str, payload: IncidentStateChange, db: Se
             raise HTTPException(status_code=404, detail=f"Incident {payload.duplicate_of} not found")
         inc.duplicate_of = payload.duplicate_of
     raise_if_dispatch_blocked(inc, target)
-    lifecycle.transition(db, inc, target, actor=payload.actor, note=payload.note)
+    lifecycle.transition(db, inc, target, actor=actor_name(user, payload.actor), role=actor_role(user, "OPERATOR"), note=payload.note)
     db.commit()
     db.refresh(inc)
     return IncidentOut.model_validate(inc)
 
 
 @router.get("/{incident_id}/history", response_model=dict)
-def get_incident_history(incident_id: str, db: Session = Depends(get_db)):
+def get_incident_history(incident_id: str, db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
     entries = (
         db.query(AuditLog)
         .filter(AuditLog.target_type == "incident", AuditLog.target_id == incident_id)
@@ -229,6 +254,7 @@ def get_incident_history(incident_id: str, db: Session = Depends(get_db)):
 @router.get("/", response_model=dict)
 def list_incidents(
     db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*DEPT)),
     status_filter: Optional[str] = Query(None, alias="status"),
     severity: Optional[str] = None,
     search: Optional[str] = None,
@@ -263,8 +289,23 @@ def list_incidents(
         "data_mode": "persistent_sqlite",
     }
 
+@router.get("/mine", response_model=dict)
+def my_incidents(db: Session = Depends(get_db), user: User = Depends(require_roles(
+        "ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"))):
+    """Reports filed by the signed-in user, or, for a rescue officer, their team's missions."""
+    q = db.query(Incident)
+    if user.role == "RESCUE_OFFICER":
+        q = q.filter(Incident.assigned_team_id == user.team_id)
+    else:
+        q = q.filter(Incident.reporter_user_id == user.id)
+    items = q.order_by(Incident.created_at.desc()).limit(200).all()
+    return {"items": [IncidentOut.model_validate(i) for i in items], "count": len(items)}
+
+
 @router.post("/", response_model=IncidentOut, status_code=status.HTTP_201_CREATED)
-def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)):
+def create_incident(payload: IncidentCreate, db: Session = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
+    """Anyone can report an emergency, signed in or not. Signed-in reports are linked to the account."""
+    signed_in = isinstance(user, User)
     # Generate unique ID
     count = db.query(Incident).count()
     new_id = f"INC-{1045 + count}"
@@ -282,19 +323,21 @@ def create_incident(payload: IncidentCreate, db: Session = Depends(get_db)):
         source=payload.source,
         incident_type=payload.incident_type or "FLOODING",
         image_url=payload.image_url,
-        reporter_name=payload.reporter_name,
-        reporter_contact=payload.reporter_contact,
+        reporter_name=payload.reporter_name or (user.full_name if signed_in else None),
+        reporter_contact=payload.reporter_contact or (user.phone if signed_in else None),
+        reporter_user_id=user.id if signed_in else None,
         reported_water_depth=payload.reported_water_depth.upper() if payload.reported_water_depth else None,
     )
 
     db.add(incident)
-    record_audit(db, payload.reporter_name or "citizen", "INCIDENT_REPORTED", "incident", new_id, payload.title, role="CITIZEN")
+    record_audit(db, user.username if signed_in else (payload.reporter_name or "anonymous"), "INCIDENT_REPORTED",
+                 "incident", new_id, payload.title, role=user.role if signed_in else "PUBLIC")
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
 
 @router.post("/{incident_id}/analyze-photo", response_model=IncidentOut)
-def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db)):
+def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
     """Run the flood-photo models on the incident's uploaded photo and store the summary."""
     from app.services.vision_service import VisionModelUnavailable, flood_vision_service
 
@@ -324,14 +367,18 @@ def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{incident_id}", response_model=IncidentOut)
-def get_incident(incident_id: str, db: Session = Depends(get_db)):
+def get_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(
+        "ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    if getattr(user, "role", "ADMIN") in ("CITIZEN", "VOLUNTEER") and inc.reporter_user_id != user.id:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     return IncidentOut.model_validate(inc)
 
 @router.patch("/{incident_id}", response_model=IncidentOut)
-def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session = Depends(get_db)):
+def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session = Depends(get_db),
+                    user: User = Depends(require_roles(*OPS))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
@@ -339,7 +386,7 @@ def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session
     if payload.status is not None:
         target = lifecycle.normalize(payload.status)
         raise_if_dispatch_blocked(inc, target)
-        lifecycle.transition(db, inc, target)
+        lifecycle.transition(db, inc, target, actor=actor_name(user, "operator"), role=actor_role(user, "OPERATOR"))
     if payload.assigned_team_id is not None:
         inc.assigned_team_id = payload.assigned_team_id
     if payload.severity is not None:
@@ -352,10 +399,11 @@ def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session
     return IncidentOut.model_validate(inc)
 
 @router.delete("/{incident_id}", status_code=status.HTTP_200_OK)
-def delete_incident(incident_id: str, db: Session = Depends(get_db)):
+def delete_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles("ADMIN"))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    record_audit(db, actor_name(user), "INCIDENT_DELETED", "incident", inc.id, inc.title, role="ADMIN")
     db.delete(inc)
     db.commit()
     return {"message": f"Incident {incident_id} removed successfully"}

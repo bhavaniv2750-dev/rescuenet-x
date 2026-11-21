@@ -6,10 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import sign_in
 from app.services import incident_lifecycle as lifecycle
 from app.services.trilateration import rssi_to_distance_m, trilaterate
 
-client = TestClient(app)
+client = sign_in(TestClient(app), "commander")
 
 
 def _new_incident(people=1, severity="LOW"):
@@ -37,7 +38,7 @@ def test_valid_path_to_resolved_and_history():
     for s in ["UNDER_VERIFICATION", "VERIFIED", "DISPATCHED", "IN_TRANSIT", "ON_SCENE", "RESOLVED"]:
         r = _move(inc, s, actor="tester")
         assert r.status_code == 200, (s, r.text)
-    assert r.json()["verified_by"] == "tester"
+    assert r.json()["verified_by"] == "commander"  # the signed-in user, not a name the caller supplies
     hist = client.get(f"/api/incidents/{inc}/history").json()
     actions = [h["action"] for h in hist["items"]]
     assert actions[0] == "INCIDENT_REPORTED"
@@ -83,8 +84,9 @@ def test_triage_then_decline_and_approve():
 
     assert _move(inc, "QUEUED").status_code == 200
     task2 = client.post("/api/agents/supervisor/triage", json={"task_type": "TRIAGE", "incident_id": inc}).json()
-    approved = client.post(f"/api/agents/tasks/{task2['id']}/approve", json={"commander": "Cmdr Test"}).json()
-    assert approved["status"] == "APPROVED" and approved["approved_by"] == "Cmdr Test"
+    approved = client.post(f"/api/agents/tasks/{task2['id']}/approve", json={"commander": "Someone Else"}).json()
+    assert approved["status"] == "APPROVED"
+    assert "(commander)" in approved["approved_by"] and "Someone Else" not in approved["approved_by"]
     assert client.get(f"/api/incidents/{inc}").json()["status"] == "DISPATCHED"
     # A decided task cannot be decided again.
     assert client.post(f"/api/agents/tasks/{task2['id']}/approve").status_code == 409

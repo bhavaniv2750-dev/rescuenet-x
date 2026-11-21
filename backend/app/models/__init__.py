@@ -8,6 +8,7 @@ from app.models.entities import (
     RescueRecord,
     RescueTeam,
     SupervisorTask,
+    User,
     Volunteer,
 )
 
@@ -22,4 +23,5 @@ __all__ = [
     "RescueRecord",
     "SupervisorTask",
     "DatasetRegistry",
+    "User",
 ]
