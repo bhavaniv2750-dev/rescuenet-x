@@ -1,4 +1,14 @@
 {
+  "DELETE /api/auth/sessions/{session_id}": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
   "DELETE /api/incidents/{incident_id}": {
     "ADMIN": "allow",
     "CITIZEN": "403",
@@ -98,6 +108,16 @@
     "RESCUE_OFFICER": "allow",
     "VOLUNTEER": "allow",
     "anonymous": "allow"
+  },
+  "GET /api/auth/sessions": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
   },
   "GET /api/auth/team-options": {
     "ADMIN": "allow",
@@ -519,6 +539,16 @@
     "VOLUNTEER": "allow",
     "anonymous": "allow"
   },
+  "POST /api/auth/logout-all": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
   "POST /api/auth/me/password": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -540,6 +570,16 @@
     "anonymous": "allow"
   },
   "POST /api/auth/users": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "POST /api/auth/users/{user_id}/revoke-sessions": {
     "ADMIN": "allow",
     "CITIZEN": "403",
     "COMMANDER": "403",

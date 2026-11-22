@@ -77,16 +77,28 @@ def jwt_secret() -> str:
     return _secret_cache
 
 
-def create_access_token(user_id: int, role: str, minutes: Optional[int] = None) -> str:
+ACCESS_TOKEN_TYPE = "access"
+
+
+def create_access_token(user_id: int, session_id: str, token_version: int, minutes: Optional[float] = None) -> str:
+    """Short-lived access token. It names the session (`sid`) and the account's token version (`tv`) but carries no role or
+    permission: those are always read from the database. Tokens without `sid`/`typ` (the old 480-minute format) are rejected."""
     now = datetime.now(timezone.utc)
     payload: Dict[str, Any] = {
+        "typ": ACCESS_TOKEN_TYPE,
         "sub": str(user_id),
-        "role": role,
+        "sid": session_id,
+        "tv": int(token_version),
+        "jti": secrets.token_hex(8),
         "iat": now,
-        "exp": now + timedelta(minutes=minutes or settings.ACCESS_TOKEN_MINUTES),
+        "exp": now + timedelta(minutes=minutes if minutes is not None else settings.access_token_minutes),
     }
     return jwt.encode(payload, jwt_secret(), algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
-    return jwt.decode(token, jwt_secret(), algorithms=[ALGORITHM])
+    """Verify signature, expiry and structure. Raises jwt.InvalidTokenError for anything else (including legacy tokens)."""
+    payload = jwt.decode(token, jwt_secret(), algorithms=[ALGORITHM], options={"require": ["exp", "iat", "sub"]})
+    if payload.get("typ") != ACCESS_TOKEN_TYPE or not isinstance(payload.get("sid"), str) or "tv" not in payload:
+        raise jwt.InvalidTokenError("not a session access token")
+    return payload

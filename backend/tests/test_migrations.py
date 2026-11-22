@@ -188,3 +188,44 @@ def test_0002_up_down_up_preserves_incident_rows(engine):
         assert c.execute(text("SELECT COUNT(*) FROM incidents")).scalar() == 1
     migrations.upgrade(engine)
     assert migrations.schema_drift(engine) == []
+
+
+# ---------------------------------------------------------------- S2: revision 0003 (sessions)
+
+def test_0003_adds_session_tables_and_token_version_without_touching_users(engine):
+    migrations.upgrade(engine, "0002")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO users (username, full_name, role, password_hash, is_active, failed_logins, created_at) "
+                       "VALUES ('legacy_user','Legacy','OPERATOR','hash-not-real',1,0,'2025-01-01')"))
+    migrations.upgrade(engine)
+    insp = inspect(engine)
+    assert {"auth_sessions", "refresh_tokens"} <= set(insp.get_table_names())
+    cols = {c["name"] for c in insp.get_columns("users")}
+    assert {"token_version", "password_changed_at"} <= cols
+    with engine.connect() as c:
+        row = c.execute(text("SELECT username, role, password_hash, token_version FROM users")).one()
+        assert tuple(row) == ("legacy_user", "OPERATOR", "hash-not-real", 0)        # untouched; version starts at 0
+        assert c.execute(text("SELECT COUNT(*) FROM auth_sessions")).scalar() == 0      # nobody has a session: everyone signs in again
+    assert migrations.schema_drift(engine) == []
+
+
+def test_0003_up_down_up_preserves_users(engine):
+    migrations.upgrade(engine, "0002")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO users (username, full_name, role, password_hash, is_active, failed_logins, created_at) "
+                       "VALUES ('keep_me','Keep','CITIZEN','h',1,0,'2025-01-01')"))
+    migrations.upgrade(engine)
+    migrations.downgrade(engine, "0002")
+    assert "auth_sessions" not in inspect(engine).get_table_names()
+    assert "token_version" not in {c["name"] for c in inspect(engine).get_columns("users")}
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM users WHERE username='keep_me'")).scalar() == 1
+    migrations.upgrade(engine)
+    assert migrations.schema_drift(engine) == []
+
+
+def test_existing_database_is_backed_up_before_the_sessions_migration(engine):
+    migrations.upgrade(engine, "0002")
+    migrations.ensure_schema(engine)          # a managed database one revision behind head
+    assert migrations.current_revision(engine) == migrations.head_revision()
+    assert len(list(settings.BACKUP_DIR.glob("*pre-migration*.db.bak"))) == 1

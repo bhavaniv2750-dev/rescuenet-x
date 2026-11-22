@@ -262,4 +262,38 @@ class User(Base):
     failed_logins = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
     last_login_at = Column(DateTime, nullable=True)
+    # Bumped whenever the account's access must end everywhere (password change, deactivation, role/team change).
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
+    password_changed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now)
+
+
+class AuthSession(Base):
+    """One sign-in. Server-side so it can be listed and revoked. Holds no secrets: refresh tokens are in RefreshToken
+    (hashed) and the client address is stored only as a keyed hash."""
+    __tablename__ = "auth_sessions"
+
+    id = Column(String(32), primary_key=True)             # random; also the `sid` claim in access tokens
+    user_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    last_used_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False)          # absolute limit
+    idle_timeout_s = Column(Integer, nullable=False)       # no refresh within this many seconds ends the session
+    remember = Column(Boolean, nullable=False, default=False)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+    revoked_reason = Column(String(40), nullable=True)
+    user_agent = Column(String(200), nullable=True)
+    client_hash = Column(String(32), nullable=True)
+
+
+class RefreshToken(Base):
+    """One refresh token of a session. Only the SHA-256 of the random token is stored. A token is used exactly once;
+    presenting a used one again is treated as theft and revokes the whole session."""
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(32), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)

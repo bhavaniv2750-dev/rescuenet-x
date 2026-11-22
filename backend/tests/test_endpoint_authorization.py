@@ -22,7 +22,7 @@ GOLDEN = Path(__file__).parent / "golden" / "endpoint_matrix.json"
 ROLES = ["ADMIN", "DEVELOPER", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]
 LOGIN = {"ADMIN": "admin", "DEVELOPER": "developer", "COMMANDER": "commander", "OPERATOR": "operator",
          "RESCUE_OFFICER": "officer", "VOLUNTEER": "volunteer", "CITIZEN": "citizen"}
-PLACEHOLDERS = {"incident_id": "INC-NOPE", "team_id": "TEAM-NOPE", "alert_id": "ALT-NOPE", "task_id": "TASK-NOPE",
+PLACEHOLDERS = {"session_id": "0" * 32, "incident_id": "INC-NOPE", "team_id": "TEAM-NOPE", "alert_id": "ALT-NOPE", "task_id": "TASK-NOPE",
                 "volunteer_id": "VOL-NOPE", "facility_id": "FAC-NOPE", "user_id": "999999", "filename": "nope.jpg",
                 "asset_id": "0" * 32, "public_ref": "RN-0000-0000-0000"}
 
@@ -87,6 +87,10 @@ MUST_ALLOW = {
     ("GET", "/api/auth/team-options"): {"ADMIN"},
     ("GET", "/api/auth/audit"): {"ADMIN", "COMMANDER"},
     ("GET", "/api/auth/me"): SIGNED_IN,
+    ("GET", "/api/auth/sessions"): SIGNED_IN,
+    ("DELETE", "/api/auth/sessions/{session_id}"): SIGNED_IN,
+    ("POST", "/api/auth/logout-all"): SIGNED_IN,
+    ("POST", "/api/auth/users/{user_id}/revoke-sessions"): {"ADMIN"},
     ("POST", "/api/auth/me/password"): SIGNED_IN,
     # open by design: guest emergency reporting and tracking, public information, device intake, sign-in
     ("POST", "/api/incidents/"): PUBLIC,
@@ -103,6 +107,13 @@ MUST_ALLOW = {
 }
 
 
+# Authenticated by the refresh COOKIE (not the Authorization header). They would consume or end the shared principals'
+# sessions, so they are not probed here; tests/test_sessions.py, test_token_rotation.py and test_csrf.py cover them.
+COOKIE_AUTH = {("POST", "/api/auth/refresh"), ("POST", "/api/auth/logout")}
+# logout-all really ends the caller's sessions, so only the anonymous refusal is probed (the rest is in test_sessions.py).
+ANON_ONLY = {("POST", "/api/auth/logout-all")}
+
+
 @pytest.fixture(scope="module")
 def principals():
     out = {"anonymous": TestClient(app)}
@@ -111,9 +122,10 @@ def principals():
     return out
 
 
-def endpoints():
+def endpoints(include_cookie_auth=True):
     spec = app.openapi()["paths"]
-    return sorted((m.upper(), p) for p, ms in spec.items() for m in ms)
+    found = sorted((m.upper(), p) for p, ms in spec.items() for m in ms)
+    return found if include_cookie_auth else [e for e in found if e not in COOKIE_AUTH]
 
 
 def probe(client, method, path):
@@ -127,13 +139,17 @@ def probe(client, method, path):
 
 @pytest.fixture(scope="module")
 def observed(principals):
-    return {f"{m} {p}": {who: probe(c, m, p) for who, c in principals.items()} for m, p in endpoints()}
+    out = {}
+    for m, p in endpoints(include_cookie_auth=False):
+        anon_only = (m, p) in ANON_ONLY
+        out[f"{m} {p}"] = {who: probe(c, m, p) if (not anon_only or who == "anonymous") else "allow" for who, c in principals.items()}
+    return out
 
 
 def test_every_endpoint_has_an_explicit_authorization_expectation():
-    missing = [e for e in endpoints() if e not in MUST_ALLOW]
+    missing = [e for e in endpoints() if e not in MUST_ALLOW and e not in COOKIE_AUTH]
     assert not missing, f"New endpoint(s) need a decision in MUST_ALLOW and a golden update: {missing}"
-    stale = [e for e in MUST_ALLOW if e not in set(endpoints())]
+    stale = [e for e in list(MUST_ALLOW) + list(COOKIE_AUTH) if e not in set(endpoints())]
     assert not stale, f"MUST_ALLOW lists endpoints that no longer exist: {stale}"
 
 

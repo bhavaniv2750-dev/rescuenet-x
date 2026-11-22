@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import permissions as perms
 from app.core.security import decode_access_token
+from app.services.sessions import check_access_claims
 from app.db.session import get_db
 from app.models.entities import User
 
@@ -25,10 +26,12 @@ def _user_from_token(creds: Optional[HTTPAuthorizationCredentials], db: Session)
         raise HTTPException(status_code=401, detail="Session expired, please sign in again",
                             headers={"WWW-Authenticate": "Bearer"})
     except jwt.InvalidTokenError:
+        # malformed, tampered, wrong signature, or the old long-lived format (no session id): all refused the same way
         raise HTTPException(status_code=401, detail="Invalid access token", headers={"WWW-Authenticate": "Bearer"})
-    user = db.query(User).filter(User.id == int(payload["sub"])).first()
-    if user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="Account not found or disabled", headers={"WWW-Authenticate": "Bearer"})
+    # The token only names a session. The session row, the user's active flag and token version, and (in the routes)
+    # the user's CURRENT role and team all come from the database, so revocation and role changes apply immediately.
+    user, session = check_access_claims(db, payload)
+    user.session_id = session.id  # transient attribute, not a column
     return user
 
 
@@ -45,8 +48,14 @@ def get_current_user(
 def get_optional_user(
     creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer), db: Session = Depends(get_db)
 ) -> Optional[User]:
-    """The signed-in user, or None for anonymous requests (for example an SOS report)."""
-    return _user_from_token(creds, db)
+    """The signed-in user, or None for anonymous requests (for example an SOS report).
+
+    A missing, expired, revoked or invalid token also yields None here: someone with a stale login must still be able to
+    report an emergency as a guest. Endpoints that need a real user use get_current_user, which answers 401."""
+    try:
+        return _user_from_token(creds, db)
+    except HTTPException:
+        return None
 
 
 def require_permission(*needed: str) -> Callable[..., User]:

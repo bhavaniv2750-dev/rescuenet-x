@@ -145,21 +145,23 @@ def test_rescue_officer_can_only_update_their_own_teams_missions():
     assert r.status_code == 403  # officers cannot set non-field states
 
 
-def test_admin_can_manage_users_but_not_lock_themselves_out():
+def test_admin_can_manage_public_accounts_but_not_lock_themselves_out():
+    """S2: administrators manage citizen/volunteer accounts. Staff accounts are not admin-provisioned any more (see
+    tests/test_privileged_escalation.py), so this uses a citizen account."""
     admin = fresh("admin")
-    name = f"staff{uuid.uuid4().hex[:6]}"
-    r = admin.post("/api/auth/users", json={"role": "OPERATOR", "username": name, "full_name": "New Operator",
+    name = f"cit{uuid.uuid4().hex[:6]}"
+    r = admin.post("/api/auth/users", json={"role": "CITIZEN", "username": name, "full_name": "New Citizen",
                                             "password": "Strong#Pass1"})
     assert r.status_code == 201
     uid = r.json()["id"]
-    assert login(TestClient(app), "operations", name, "Strong#Pass1").status_code == 200
+    assert login(TestClient(app), "public", name, "Strong#Pass1").status_code == 200
     assert admin.patch(f"/api/auth/users/{uid}", json={"is_active": False}).status_code == 200
-    assert login(TestClient(app), "operations", name, "Strong#Pass1").status_code == 403
+    assert login(TestClient(app), "public", name, "Strong#Pass1").status_code == 403
     my_id = admin.get("/api/auth/me").json()["id"]
     assert admin.patch(f"/api/auth/users/{my_id}", json={"is_active": False}).status_code == 409
-    # officers need a team
+    # staff accounts, officers included, can no longer be created by an administrator
     assert admin.post("/api/auth/users", json={"role": "RESCUE_OFFICER", "username": f"o{uuid.uuid4().hex[:6]}",
-                      "full_name": "No Team", "password": "Strong#Pass1"}).status_code == 422
+                      "full_name": "No Team", "password": "Strong#Pass1"}).status_code == 403
 
 
 def test_changing_password_requires_the_current_one():

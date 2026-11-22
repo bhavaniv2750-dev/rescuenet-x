@@ -115,6 +115,11 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
 
 ROLES = list(ROLE_PERMISSIONS)
 
+# Accounts an administrator may create, reset and promote into. Every other role carries operational or system authority,
+# so an administrator must never be able to obtain those credentials or grant those roles directly (privilege escalation).
+PUBLIC_ROLES = ("CITIZEN", "VOLUNTEER")
+PRIVILEGED_ROLES = tuple(r for r in ROLES if r not in PUBLIC_ROLES)
+
 # Permissions no role other than the listed ones may ever hold (policy test: a change here must be deliberate).
 RESTRICTED: Dict[str, FrozenSet[str]] = {
     P.DISPATCH_APPROVE: frozenset({"COMMANDER"}),

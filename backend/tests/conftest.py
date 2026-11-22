@@ -16,6 +16,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="rescuenet_test_")
 os.environ.setdefault("RESCUENET_ENV", "development")
+# Tests sign in as the same demo users hundreds of times; the production cap (10 sessions per user) is tested explicitly.
+os.environ.setdefault("MAX_SESSIONS_PER_USER", "100000")
 os.environ.setdefault("UPLOAD_DIR", str(Path(_TEST_DB_DIR) / "uploads"))
 os.environ.setdefault("BACKUP_DIR", str(Path(_TEST_DB_DIR) / "backups"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}")
@@ -76,3 +78,25 @@ def sign_in(client, username: str = "commander", portal: str = None):
     assert r.status_code == 200, r.text
     client.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
     return client
+
+
+def make_user(role: str = "OPERATOR", password: str = "Str0ng!Passw0rd", team_id=None, prefix: str = "tmp"):
+    """Create an account directly in the database. Administrators can no longer provision staff accounts through the API
+    (S2), so tests that need a throw-away staff account insert it here, as a host operator would. Returns (id, username)."""
+    from app.core.security import hash_password
+    from app.db.session import SessionLocal
+    from app.models.entities import User
+
+    name = f"{prefix}_{uuid.uuid4().hex[:8]}"
+    db = SessionLocal()
+    try:
+        u = User(username=name, full_name=f"Temp {role.title()}", role=role, password_hash=hash_password(password), team_id=team_id)
+        db.add(u)
+        db.commit()
+        return u.id, name
+    finally:
+        db.close()
+
+
+PORTAL_FOR_ROLE = {"ADMIN": "admin", "DEVELOPER": "admin", "COMMANDER": "operations", "OPERATOR": "operations",
+                   "RESCUE_OFFICER": "operations", "VOLUNTEER": "public", "CITIZEN": "public"}

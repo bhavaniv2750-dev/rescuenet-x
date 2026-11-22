@@ -69,7 +69,19 @@ class Settings(BaseSettings):
 
     # Authentication
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")  # empty: generated once and kept in backend/.jwt_secret
-    ACCESS_TOKEN_MINUTES: int = int(os.getenv("ACCESS_TOKEN_MINUTES", "480"))
+    # Access tokens are short-lived (default 15 minutes, never more than 60 whatever the setting). Longer sign-ins come
+    # from rotating refresh tokens held in an HttpOnly cookie, backed by server-side session records.
+    ACCESS_TOKEN_MINUTES: float = float(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
+    SESSION_ABSOLUTE_HOURS: float = float(os.getenv("SESSION_ABSOLUTE_HOURS", "12"))      # hard limit per sign-in
+    SESSION_IDLE_MINUTES: float = float(os.getenv("SESSION_IDLE_MINUTES", "60"))          # no refresh for this long = over
+    REMEMBER_ABSOLUTE_DAYS: float = float(os.getenv("REMEMBER_ABSOLUTE_DAYS", "7"))       # "keep me signed in": public roles only
+    REMEMBER_IDLE_HOURS: float = float(os.getenv("REMEMBER_IDLE_HOURS", "24"))
+    MAX_SESSIONS_PER_USER: int = int(os.getenv("MAX_SESSIONS_PER_USER", "10"))            # oldest are revoked beyond this
+    REFRESH_COOKIE_NAME: str = "rn_refresh"
+    CSRF_COOKIE_NAME: str = "rn_csrf"
+    # Extra browser origins (comma separated) allowed to call the cookie-authenticated endpoints, e.g. a reverse
+    # proxy's public origin. Same-origin requests are always allowed.
+    TRUSTED_ORIGINS: str = os.getenv("TRUSTED_ORIGINS", "")
     # Demo accounts for every role (see README). Turn off for any real deployment.
     SEED_DEMO_USERS: bool = os.getenv("SEED_DEMO_USERS", "true").lower() in ("1", "true", "yes")
     DEMO_USER_PASSWORD: str = os.getenv("DEMO_USER_PASSWORD", "Rescue@2026")
@@ -78,6 +90,15 @@ class Settings(BaseSettings):
     LORA_GATEWAY_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def access_token_minutes(self) -> float:
+        return max(0.05, min(self.ACCESS_TOKEN_MINUTES, 60.0))
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Refresh/CSRF cookies are Secure in production; only development (plain http) may relax it."""
+        return not self.is_development
 
     @property
     def is_production(self) -> bool:
