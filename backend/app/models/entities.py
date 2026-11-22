@@ -52,8 +52,31 @@ class Incident(Base):
     risk_downgrade_note = Column(Text, nullable=True)
     # JSON summary of the photo analysis (PREDICTED), if a photo was analysed
     photo_analysis = Column(Text, nullable=True)
+    # What a reporter is given to follow their report: a random reference (not secret) and a secret tracking code
+    # whose SHA-256 is stored here. Internal ids are never shown to the public.
+    public_ref = Column(String(20), nullable=True, unique=True, index=True)
+    tracking_code_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class MediaAsset(Base):
+    """An evidence photograph. The file is private: it is only served after an access check (services/media.py)."""
+    __tablename__ = "media_assets"
+
+    id = Column(String(32), primary_key=True)             # random 128-bit value, also the stored file's name
+    incident_id = Column(String(50), nullable=True, index=True)  # empty until attached to a report
+    stored_name = Column(String(80), nullable=False)
+    content_type = Column(String(50), nullable=False, default="image/jpeg")
+    size_bytes = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    sha256 = Column(String(64), nullable=False)
+    uploader_user_id = Column(Integer, nullable=True)
+    uploader_hash = Column(String(32), nullable=True, index=True)  # keyed hash of the client address, never the address
+    privacy = Column(String(20), nullable=False, default="PRIVATE")
+    legacy_source = Column(String(200), nullable=True)    # original file name for photos imported from the old route
+    created_at = Column(DateTime, default=utc_now)
 
 
 @event.listens_for(Incident, "before_insert")

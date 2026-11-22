@@ -25,6 +25,7 @@ export interface Incident {
   photo_analysis?: Partial<VisionAnalysis> | null;
   incident_type?: string;
   image_url?: string | null;
+  public_ref?: string | null;
   reporter_name?: string | null;
   reporter_contact?: string | null;
   device_battery_pct?: number | null;

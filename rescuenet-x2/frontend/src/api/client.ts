@@ -132,9 +132,11 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     const url = `${API_BASE_URL}/incidents/upload-image`;
+    const token = tokenStore.get();
     const response = await fetch(url, {
       method: 'POST',
       body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!response.ok) {
       const err = await response.text();
@@ -155,6 +157,24 @@ export const api = {
     }>;
   },
 
+  /** Private evidence photo, fetched with the sign-in token (a plain <img> cannot send it). */
+  getEvidenceBlob: async (path: string): Promise<Blob> => {
+    const token = tokenStore.get();
+    const response = await fetch(assetUrl(path), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    if (!response.ok) throw new ApiError(response.status, 'Photo not available');
+    return response.blob();
+  },
+
+  /** Follow a report without an account. The tracking code goes in a header, never in the URL. */
+  trackReport: async (ref: string, code: string) => {
+    const response = await fetch(`${API_BASE_URL}/public/reports/${encodeURIComponent(ref.trim())}`, {
+      headers: { 'X-Tracking-Code': code.trim() },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, typeof body.detail === 'string' ? body.detail : 'Could not look up that report.');
+    return body as { public_ref: string; status: string; received_at: string; updated_at: string; photo_count: number; notice: string };
+  },
+
   createIncident: (payload: {
     title: string;
     description: string;
@@ -169,7 +189,7 @@ export const api = {
     reporter_name?: string | null;
     reporter_contact?: string | null;
     reported_water_depth?: string | null;
-  }) => request<Incident>('/incidents/', { method: 'POST', body: JSON.stringify(payload) }),
+  }) => request<Incident & { tracking_code?: string; photos_attached?: number; photo_warnings?: string[] }>('/incidents/', { method: 'POST', body: JSON.stringify(payload) }),
 
   updateIncident: (id: string, payload: { status?: string; assigned_team_id?: string; severity?: string; image_url?: string | null }) =>
     request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),

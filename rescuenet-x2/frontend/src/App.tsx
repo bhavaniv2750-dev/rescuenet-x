@@ -23,6 +23,7 @@ import { SupervisorView } from './components/Views/SupervisorView';
 import { DatasetsView } from './components/Views/DatasetsView';
 import { SettingsView } from './components/Views/SettingsView';
 import { PublicHomeView } from './components/Views/PublicHomeView';
+import { ReportReceipt, type ReportReceiptData } from './components/UI/ReportReceipt';
 import { MyWorkView } from './components/Views/MyWorkView';
 import { AccountView } from './components/Views/AccountView';
 import { AdminConsoleView } from './components/Views/AdminConsoleView';
@@ -35,6 +36,7 @@ function Shell() {
   const role = user?.role ?? null;
 
   // A signed-out visitor either sees the sign-in page or browses as a guest.
+  const [receipt, setReceipt] = useState<ReportReceiptData | null>(null);
   const [guest, setGuest] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem(GUEST_KEY) === '1';
@@ -134,7 +136,8 @@ function Shell() {
     return <LoginPage onContinueAsGuest={() => { setGuestMode(true); setActivePage('Home'); }} />;
   }
 
-  const afterReport = () => {
+  const afterReport = (r?: ReportReceiptData) => {
+    if (r) setReceipt(r);
     toast.success('Report sent. The control room has been notified.');
     loadAllData();
     setActivePage(staff ? 'Rescue Operations' : user ? 'My Reports' : 'Home');
@@ -181,6 +184,7 @@ function Shell() {
         )}
 
         <main className="page-viewport" key={activePage}>
+          {receipt && <ReportReceipt receipt={receipt} onClose={() => setReceipt(null)} />}
           {activePage === 'Home' && (
             <PublicHomeView alerts={alerts} gauges={gauges} facilities={facilities} userName={user?.full_name} onNavigate={setActivePage} />
           )}

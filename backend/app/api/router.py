@@ -9,6 +9,8 @@ from app.api.routes.facilities import router as facilities_router
 from app.api.routes.flood import router as flood_router
 from app.api.routes.health import router as health_router
 from app.api.routes.incidents import router as incidents_router
+from app.api.routes.media import router as media_router
+from app.api.routes.public import router as public_router
 from app.api.routes.records import router as records_router
 from app.api.routes.teams import router as teams_router
 from app.api.routes.vision import router as vision_router
@@ -24,6 +26,8 @@ api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[Depends(require_roles(*DEPT))])
 api_router.include_router(flood_router, prefix="/flood", tags=["Flood"])
 api_router.include_router(incidents_router, prefix="/incidents", tags=["Incidents"])
+api_router.include_router(media_router, prefix="/media", tags=["Evidence"])
+api_router.include_router(public_router, prefix="/public", tags=["Public"])
 api_router.include_router(alerts_router, prefix="/alerts", tags=["Alerts"])
 api_router.include_router(teams_router, prefix="/teams", tags=["Rescue Teams"])
 api_router.include_router(volunteers_router, prefix="/volunteers", tags=["Volunteers"])

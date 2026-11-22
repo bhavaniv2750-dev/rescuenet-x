@@ -1,5 +1,8 @@
+import { AuthImage } from '../UI/AuthImage';
+import type { ReportReceiptData } from '../UI/ReportReceipt';
+import { prepareImage, MAX_UPLOAD_BYTES } from '../../lib/image';
 import React, { useState, useEffect } from 'react';
-import { api, assetUrl } from '../../api/client';
+import { api } from '../../api/client';
 import type { Incident, WaterDepth } from '../../api/types';
 import { cleanMessage, toast } from '../../lib/toast';
 import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
@@ -23,7 +26,7 @@ import {
 } from 'lucide-react';
 
 interface IncidentReportViewProps {
-  onSuccess: () => void;
+  onSuccess: (receipt?: ReportReceiptData) => void;
   /** Citizens, volunteers and officers can file a report but cannot browse everyone's reports. */
   intakeOnly?: boolean;
 }
@@ -53,7 +56,6 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
   const [waterDepth, setWaterDepth] = useState<WaterDepth>('UNKNOWN');
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [brokenImage, setBrokenImage] = useState<string | null>(null);
 
   // Image Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -98,18 +100,19 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
   // Handle local file selection and immediate backend upload
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const original = e.target.files?.[0];
+    if (!original) return;
 
-    // Validate size (10 MB limit)
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('File size exceeds the 10MB limit.');
+    // Phone photos are often over the 5 MB limit: shrink in the browser first (JPEG/PNG/WebP only).
+    let file: File;
+    try {
+      file = await prepareImage(original);
+    } catch (err: any) {
+      setUploadError(err.message || 'That photo could not be prepared.');
       return;
     }
-
-    // Validate type
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Please select a valid image file (PNG, JPG, WEBP, GIF).');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError('Photos must be 5 MB or smaller.');
       return;
     }
 
@@ -170,9 +173,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
         reported_water_depth: waterDepth,
       });
 
-      setSubmittedNotice(
-        `Incident ${newInc.id} registered and persisted to database. Queued for responder triage.`
-      );
+      setSubmittedNotice('Your report was received and queued for responder triage.');
+      const receipt = newInc.tracking_code && newInc.public_ref
+        ? { ref: newInc.public_ref, code: newInc.tracking_code, warnings: newInc.photo_warnings || [] }
+        : undefined;
       setTitle('');
       setDescription('');
       setReporterName('');
@@ -181,10 +185,12 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       handleRemoveImage();
 
       // Refresh data
-      onSuccess();
-      await fetchIncidents();
-      setSelectedIncident(newInc);
-      setActiveTab('directory');
+      onSuccess(receipt);
+      if (!intakeOnly) {
+        await fetchIncidents();
+        setSelectedIncident(newInc);
+        setActiveTab('directory');
+      }
     } catch (err: any) {
       toast.error(`Could not submit: ${cleanMessage(err)}`);
     } finally {
@@ -216,11 +222,6 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
     } finally {
       setAnalyzingPhoto(false);
     }
-  };
-
-  const resolveImageSource = (url?: string | null) => {
-    if (!url) return null;
-    return assetUrl(url);
   };
 
   return (
@@ -433,7 +434,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                   <Camera size={18} className="text-cyan" />
                   <strong>Attach Photographic Disaster Observation</strong>
                 </div>
-                <span className="text-xs text-muted">JPG, PNG, WEBP (Max 10MB)</span>
+                <span className="text-xs text-muted">JPG, PNG or WebP, up to 5 MB (large photos are resized automatically)</span>
               </div>
 
               {!imagePreview ? (
@@ -441,7 +442,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                   <input
                     type="file"
                     id="incident-file-input"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    accept="image/jpeg,image/png,image/webp"
                     style={{ display: 'none' }}
                     onChange={handleFileChange}
                   />
@@ -763,18 +764,11 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         alignItems: 'center',
                       }}
                     >
-                      {brokenImage === selectedIncident.image_url ? (
-                        <div style={{ padding: '24px', color: '#64748b', fontSize: '13px' }}>
-                          The attached photo could not be loaded.
-                        </div>
-                      ) : (
-                        <img
-                          src={resolveImageSource(selectedIncident.image_url) || ''}
-                          alt={`Observation for ${selectedIncident.id}`}
-                          style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
-                          onError={() => setBrokenImage(selectedIncident.image_url || null)}
-                        />
-                      )}
+                      <AuthImage
+                        src={selectedIncident.image_url}
+                        alt={`Observation for ${selectedIncident.id}`}
+                        style={{ maxWidth: '100%', maxHeight: '360px', objectFit: 'contain' }}
+                      />
                     </div>
                   ) : null}
                   {selectedIncident.image_url && (

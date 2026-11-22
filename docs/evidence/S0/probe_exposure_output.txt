@@ -1,0 +1,13 @@
+PASS  guest can upload a photo
+PASS  guest can report without an account
+PASS  photo is NOT readable anonymously
+PASS  photo is NOT in a static folder
+PASS  old public photo route is closed
+PASS  incident list needs sign-in
+PASS  incident by id needs sign-in
+PASS  internal ids are not returned to guests
+PASS  counter-style ids do not exist
+PASS  tracking works with the code
+PASS  wrong code and unknown reference look identical
+
+RESULT: no exposure found

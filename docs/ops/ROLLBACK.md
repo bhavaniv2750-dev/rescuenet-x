@@ -44,3 +44,12 @@ columns added to an older SQLite table stay nullable (SQLite cannot change that 
 ## Limits
 Backups are point-in-time files, not continuous. SQLite is single-node. Restoring replaces **all** data changed since
 the backup. Do not restore while the app is running.
+
+## Revision 0002 (private photos and public references)
+Adds `media_assets`, `incidents.public_ref` and `incidents.tracking_code_hash`; gives every existing incident a random
+public reference. Existing reports have no tracking code and cannot be looked up by guests.
+- Photos uploaded through the old route keep working for signed-in, authorised staff. To move them under the new rules:
+  `python scripts/migrate_legacy_media.py` (dry run) then `--apply` after a backup. Original files are never deleted.
+- Downgrading drops the new columns and table (public references, tracking hashes, media rows are lost; image files stay
+  on disk). Restoring the pre-migration backup is the safer rollback.
+- Run `python scripts/probe_public_exposure.py <url>` against a development server to confirm nothing is exposed.

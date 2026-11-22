@@ -41,7 +41,26 @@ class Settings(BaseSettings):
     BACKUP_DIR: Path = Path(os.getenv("BACKUP_DIR") or str(BASE_DIR / "backend" / "backups"))
 
     # Uploads directory for incident attachments
-    UPLOAD_DIR: Path = BASE_DIR / "backend" / "uploads"
+    UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR") or str(BASE_DIR / "backend" / "uploads"))
+
+    # ---- Public reporting and evidence photos (S0)
+    MAX_IMAGE_BYTES: int = 5 * 1024 * 1024          # per uploaded image, checked before any decoding
+    MAX_IMAGES_PER_REPORT: int = 5
+    MAX_IMAGE_PIXELS: int = 25_000_000              # decoded size limit (decompression-bomb guard)
+    IMAGE_MAX_SIDE_PX: int = 2048                   # stored images are downscaled to this
+    UPLOAD_QUOTA_MB: int = int(os.getenv("UPLOAD_QUOTA_MB", "2048"))              # total evidence storage
+    GUEST_UPLOAD_MB_PER_DAY: int = int(os.getenv("GUEST_UPLOAD_MB_PER_DAY", "50"))  # per client address
+    MAX_UNATTACHED_UPLOADS_PER_CLIENT: int = 10     # uploads not yet attached to a report
+    UNATTACHED_UPLOAD_TTL_MINUTES: int = 60         # window in which an uploaded photo can be attached to a report
+    GUEST_REPORTS_PER_HOUR: int = int(os.getenv("GUEST_REPORTS_PER_HOUR", "10"))   # per client address
+    GUEST_UPLOADS_PER_HOUR: int = int(os.getenv("GUEST_UPLOADS_PER_HOUR", "25"))
+    USER_REPORTS_PER_HOUR: int = int(os.getenv("USER_REPORTS_PER_HOUR", "60"))      # per signed-in user
+    TRACKING_LOOKUPS_PER_HOUR: int = int(os.getenv("TRACKING_LOOKUPS_PER_HOUR", "60"))
+    TRACKING_FAILURES_PER_15_MIN: int = int(os.getenv("TRACKING_FAILURES_PER_15_MIN", "10"))
+    RATE_LIMITS_ENABLED: bool = os.getenv("RATE_LIMITS_ENABLED", "true").lower() in ("1", "true", "yes")
+    # Number of reverse proxies in front of the app. 0 = use the socket address and ignore X-Forwarded-For,
+    # which a client could forge. Set to 1 behind one trusted proxy.
+    TRUSTED_PROXY_COUNT: int = int(os.getenv("TRUSTED_PROXY_COUNT", "0"))
 
     # Ollama Supervisor Settings
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")

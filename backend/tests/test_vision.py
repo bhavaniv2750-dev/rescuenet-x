@@ -57,7 +57,9 @@ def test_plain_grey_image_is_not_a_flood():
 
 @needs_model
 def test_incident_photo_analysis_is_stored():
-    photo = _first_flood_photo()
+    # the upload limit is 5 MB, so use a dataset photo under it
+    photo = next(p for p in sorted(settings.FLOOD_IMG_DIR.iterdir())
+                 if p.suffix.lower() in {".jpg", ".jpeg", ".png"} and p.stat().st_size < 4 * 1024 * 1024)
     up = client.post("/api/incidents/upload-image", files={"file": (photo.name, photo.read_bytes(), "image/jpeg")}).json()
     inc = client.post("/api/incidents/", json={
         "title": "Photo test", "description": "Street under water", "area": "Hebbal",
@@ -68,4 +70,4 @@ def test_incident_photo_analysis_is_stored():
     r = client.post(f"/api/incidents/{inc['id']}/analyze-photo")
     assert r.status_code == 200, r.text
     assert r.json()["photo_analysis"]["data_label"] == "PREDICTED"
-    (settings.UPLOAD_DIR / up["filename"]).unlink(missing_ok=True)
+    (settings.UPLOAD_DIR / f"{up['asset_id']}.jpg").unlink(missing_ok=True)

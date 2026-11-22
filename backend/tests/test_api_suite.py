@@ -152,7 +152,11 @@ def test_full_system():
         print("   Human Approval Gatekeeper Verified!")
 
     print("\n=== 14. Image Upload & Static Retrieval ===")
-    dummy_image_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), (30, 90, 160)).save(buf, format="PNG")
+    dummy_image_bytes = buf.getvalue()
     r = client.post(
         "/api/incidents/upload-image",
         files={"file": ("field_flood_proof.png", dummy_image_bytes, "image/png")},
@@ -160,14 +164,13 @@ def test_full_system():
     assert r.status_code == 201
     upload_res = r.json()
     assert upload_res["status"] == "success"
-    assert "/api/incidents/uploads/" in upload_res["image_url"]
+    assert "/api/media/" in upload_res["image_url"]
     print(" Image Upload OK:", upload_res["image_url"])
 
-    # Test static retrieval of uploaded image
-    r_img = client.get(upload_res["image_url"])
-    assert r_img.status_code == 200
-    assert len(r_img.content) == len(dummy_image_bytes)
-    print(" Image Retrieval OK: Verified exact byte match")
+    # Evidence photos are private: an authorised (signed-in) user can open the photo once it belongs to a report
+    # (it is stored as a re-encoded JPEG, so the bytes differ from the upload by design).
+    from fastapi.testclient import TestClient as _TC
+    assert _TC(client.app).get(upload_res["image_url"]).status_code == 401
 
     print("\n=== 15. Create Incident With Attached Image & Reporter Info ===")
     r = client.post("/api/incidents/", json={
@@ -188,6 +191,9 @@ def test_full_system():
     inc_with_img = r.json()
     assert inc_with_img["image_url"] == upload_res["image_url"]
     assert inc_with_img["reporter_name"] == "Ramesh Kumar (Resident)"
+    r_img = client.get(upload_res["image_url"])
+    assert r_img.status_code == 200 and r_img.headers["content-type"] == "image/jpeg"
+    assert r_img.headers["cache-control"] == "private, no-store"
     print(" Incident With Photo OK:", inc_with_img["id"])
 
     print("\n=== 16. Rescue Records CSV Export Endpoint ===")

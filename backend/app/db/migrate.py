@@ -25,17 +25,26 @@ def _default_sql(column) -> str:
     return " DEFAULT '" + str(default).replace("'", "''") + "'"
 
 
-def upgrade_schema(engine: Engine) -> list:
+def upgrade_schema(engine: Engine, only: dict | None = None, add_columns: bool = True) -> list:
+    """Add missing columns and run the legacy data fix-ups.
+
+    `only` (table name -> set of column names) limits which columns may be added; migrations use it to bring an
+    older database to an exact baseline shape. add_columns=False runs the data fix-ups alone.
+    """
     added = []
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
     with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
+        for table in Base.metadata.sorted_tables if add_columns else []:
             if table.name not in existing_tables:
+                continue
+            if only is not None and table.name not in only:
                 continue
             have = {c["name"] for c in inspector.get_columns(table.name)}
             for column in table.columns:
                 if column.name in have:
+                    continue
+                if only is not None and column.name not in only[table.name]:
                     continue
                 col_type = column.type.compile(dialect=engine.dialect)
                 # SQLite cannot add NOT NULL columns without a default, so keep new columns nullable.

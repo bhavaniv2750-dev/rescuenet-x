@@ -1,10 +1,11 @@
 import json
 import os
 import re
+import secrets
 import uuid
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -22,68 +23,71 @@ from app.schemas.domain import (
     AuditOut,
     BeaconOut,
     IncidentCreate,
+    IncidentCreatedOut,
     IncidentOut,
     IncidentStateChange,
     IncidentStatusUpdate,
     LoRaPacket,
 )
 from app.services import incident_lifecycle as lifecycle
+from app.services import media, public_refs, rate_limit
+from app.services.rate_limit import client_fingerprint
 from app.services.audit import record_audit
 from app.services.trilateration import rssi_to_distance_m, trilaterate
 
 router = APIRouter()
 
-ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-
 @router.post("/upload-image", status_code=status.HTTP_201_CREATED)
-async def upload_incident_image(file: UploadFile = File(...)):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file selected")
-    
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_IMAGE_EXTS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format '{ext}'. Allowed extensions: {', '.join(sorted(ALLOWED_IMAGE_EXTS))}",
-        )
-    
-    if file.content_type and not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
-
-    # Read and check size
-    contents = await file.read()
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File size exceeds maximum 10MB limit")
-    if len(contents) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-
-    # Sanitize base filename and create unique name
-    clean_base = re.sub(r"[^a-zA-Z0-9_\-]", "_", Path(file.filename).stem)[:30]
-    safe_filename = f"inc_{uuid.uuid4().hex[:10]}_{clean_base}{ext}"
-    
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    destination = settings.UPLOAD_DIR / safe_filename
-    
-    with open(destination, "wb") as f:
-        f.write(contents)
-
+async def upload_incident_image(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db),
+                                user: Optional[User] = Depends(get_optional_user)):
+    """Upload one evidence photo. Open to guests (emergency reporting needs no account), but limited:
+    5 MB, JPEG/PNG/WebP only (decoded and re-encoded, metadata removed), and per-connection rate and quota limits.
+    The returned image_url is a private reference: it is only useful to attach the photo to a report that is created
+    next, and it cannot be opened without authorisation."""
+    signed_in = isinstance(user, User)
+    fingerprint = client_fingerprint(request)
+    rate_limit.check("upload-user" if signed_in else "upload-guest", str(user.id) if signed_in else fingerprint,
+                     settings.USER_REPORTS_PER_HOUR * settings.MAX_IMAGES_PER_REPORT if signed_in else settings.GUEST_UPLOADS_PER_HOUR, 3600)
+    try:
+        raw = media.read_limited(file.file, settings.MAX_IMAGE_BYTES)
+        asset = media.store_upload(db, raw, user=user if signed_in else None, client_hash=fingerprint)
+    except media.MediaRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
         "status": "success",
-        "image_url": f"/api/incidents/uploads/{safe_filename}",
-        "filename": safe_filename,
-        "size_bytes": len(contents),
-        "content_type": file.content_type or "image/jpeg",
+        "image_url": f"{media.MEDIA_URL_PREFIX}{asset.id}",
+        "asset_id": asset.id,
+        "size_bytes": asset.size_bytes,
+        "content_type": asset.content_type,
+        "valid_for_minutes": settings.UNATTACHED_UPLOAD_TTL_MINUTES,
     }
 
+
+def _can_view_incident_evidence(inc: Incident, user: Optional[User]) -> bool:
+    if user is None:
+        return False
+    if user.role in media.STAFF_ROLES:
+        return True
+    if user.role == "RESCUE_OFFICER":
+        return bool(user.team_id) and inc.assigned_team_id == user.team_id
+    if user.role in ("CITIZEN", "VOLUNTEER"):
+        return inc.reporter_user_id == user.id
+    return False
+
+
 @router.get("/uploads/{filename}")
-def get_incident_image(filename: str):
-    # Guard against directory traversal
+def get_legacy_incident_image(filename: str, db: Session = Depends(get_db),
+                              user: Optional[User] = Depends(get_optional_user)):
+    """Old photo route. No longer public: it now needs a sign-in and the same permission as /api/media/{id}."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in required", headers={"WWW-Authenticate": "Bearer"})
     clean_name = os.path.basename(filename)
+    inc = media.asset_for_legacy_filename(db, clean_name)
     file_path = settings.UPLOAD_DIR / clean_name
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Incident attachment image not found")
-    return FileResponse(file_path)
+    if inc is None or not _can_view_incident_evidence(inc, user) or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(file_path, headers=media.PRIVATE_HEADERS)
+
 
 FIELD_STATES = ("IN_TRANSIT", "ON_SCENE", "RESOLVED")
 
@@ -350,13 +354,34 @@ def my_incidents(db: Session = Depends(get_db), user: User = Depends(require_rol
     return {"items": [IncidentOut.model_validate(i) for i in items], "count": len(items)}
 
 
-@router.post("/", response_model=IncidentOut, status_code=status.HTTP_201_CREATED)
-def create_incident(payload: IncidentCreate, db: Session = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
-    """Anyone can report an emergency, signed in or not. Signed-in reports are linked to the account."""
+_ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _new_incident_id(db: Session) -> str:
+    """Random, non-sequential internal id (the old counter-based ids leaked report volume and could repeat after a delete)."""
+    while True:
+        candidate = "INC-" + "".join(secrets.choice(_ID_ALPHABET) for _ in range(8))
+        if not db.query(Incident.id).filter(Incident.id == candidate).first():
+            return candidate
+
+
+def create_report(db: Session, payload: IncidentCreate, request: Request, user: Optional[User]) -> tuple:
+    """Shared by POST /incidents/ and POST /public/reports. Reporting never requires an account.
+
+    Guests are limited per connection (default 10 reports per hour); signed-in users per account. A photo problem
+    never blocks the report: the report is saved and the problem is returned as a warning.
+    """
     signed_in = isinstance(user, User)
-    # Generate unique ID
-    count = db.query(Incident).count()
-    new_id = f"INC-{1045 + count}"
+    if signed_in:
+        rate_limit.check("report-user", str(user.id), settings.USER_REPORTS_PER_HOUR, 3600)
+    else:
+        rate_limit.check("report-guest", client_fingerprint(request), settings.GUEST_REPORTS_PER_HOUR, 3600)
+
+    new_id = _new_incident_id(db)
+    tracking_code = public_refs.new_tracking_code()
+    public_ref = public_refs.new_public_ref()
+    while db.query(Incident.id).filter(Incident.public_ref == public_ref).first():
+        public_ref = public_refs.new_public_ref()
 
     incident = Incident(
         id=new_id,
@@ -370,19 +395,46 @@ def create_incident(payload: IncidentCreate, db: Session = Depends(get_db), user
         status="REPORTED",
         source=payload.source,
         incident_type=payload.incident_type or "FLOODING",
-        image_url=payload.image_url,
+        image_url=None,
         reporter_name=payload.reporter_name or (user.full_name if signed_in else None),
         reporter_contact=payload.reporter_contact or (user.phone if signed_in else None),
         reporter_user_id=user.id if signed_in else None,
         reported_water_depth=payload.reported_water_depth.upper() if payload.reported_water_depth else None,
+        public_ref=public_ref,
+        tracking_code_hash=public_refs.hash_code(tracking_code),
     )
-
     db.add(incident)
-    record_audit(db, user.username if signed_in else (payload.reporter_name or "anonymous"), "INCIDENT_REPORTED",
+    db.flush()
+
+    urls = ([payload.image_url] if payload.image_url else []) + list(payload.image_urls or [])
+    attached, warnings_out = [], []
+    for url in dict.fromkeys(urls):
+        if len(attached) >= settings.MAX_IMAGES_PER_REPORT:
+            warnings_out.append(f"Only {settings.MAX_IMAGES_PER_REPORT} photos can be attached to one report.")
+            break
+        try:
+            attached += media.attach_to_incident(db, [url], incident, user if signed_in else None)
+        except media.MediaRejected as exc:
+            warnings_out.append(str(exc))
+    if attached:
+        incident.image_url = f"{media.MEDIA_URL_PREFIX}{attached[0].id}"
+
+    record_audit(db, user.username if signed_in else "public", "INCIDENT_REPORTED",
                  "incident", new_id, payload.title, role=user.role if signed_in else "PUBLIC")
     db.commit()
     db.refresh(incident)
-    return IncidentOut.model_validate(incident)
+    return incident, tracking_code, len(attached), warnings_out
+
+
+@router.post("/", response_model=IncidentCreatedOut, status_code=status.HTTP_201_CREATED)
+def create_incident(payload: IncidentCreate, request: Request = None, db: Session = Depends(get_db),
+                    user: Optional[User] = Depends(get_optional_user)):
+    """Anyone can report an emergency, signed in or not. Signed-in reports are linked to the account.
+    The response includes a one-time tracking_code for following the report without an account."""
+    incident, code, n, warns = create_report(db, payload, request, user)
+    out = IncidentCreatedOut.model_validate(incident)
+    out.tracking_code, out.photos_attached, out.photo_warnings = code, n, warns
+    return out
 
 @router.post("/{incident_id}/analyze-photo", response_model=IncidentOut)
 def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
@@ -392,11 +444,16 @@ def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), _: U
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
-    prefix = "/api/incidents/uploads/"
-    if not inc.image_url or not inc.image_url.startswith(prefix):
+    aid = media.asset_id_from_url(inc.image_url)
+    legacy = media.LEGACY_URL_PREFIX
+    if aid:
+        asset = db.query(media.MediaAsset).filter(media.MediaAsset.id == aid).first()
+        path = media.asset_path(asset) if asset else None
+    elif inc.image_url and inc.image_url.startswith(legacy):
+        path = settings.UPLOAD_DIR / os.path.basename(inc.image_url[len(legacy):])
+    else:
         raise HTTPException(status_code=422, detail="Incident has no uploaded photo to analyse")
-    path = settings.UPLOAD_DIR / os.path.basename(inc.image_url[len(prefix):])
-    if not path.is_file():
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Uploaded photo file is missing")
     try:
         result = flood_vision_service.analyze(path.read_bytes(), include_overlay=False)

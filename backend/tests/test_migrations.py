@@ -63,7 +63,7 @@ def test_up_down_up_is_clean(engine):
 
 def _make_legacy_db(engine):
     """A database as an older version of the app left it: no Alembic, a missing table, missing columns."""
-    Base.metadata.create_all(bind=engine)
+    migrations.baseline_metadata().create_all(bind=engine)   # the 0001 shape, no Alembic bookkeeping
     with engine.begin() as c:
         c.execute(text("DROP TABLE audit_logs"))
         c.execute(text("DROP INDEX ix_incidents_beacon_id"))
@@ -160,3 +160,31 @@ def test_ensure_schema_works_when_nothing_else_imported_the_models(tmp_path):
            "ensure_schema(engine)\nassert current_revision(engine) == head_revision()\nprint('adopted')")
     r = subprocess.run([sys.executable, "-c", run], cwd=BACKEND, env=env, capture_output=True, text=True)
     assert "adopted" in r.stdout, r.stdout + r.stderr
+
+
+def test_adopted_legacy_database_gets_s0_changes_through_the_migration(engine):
+    """Adoption stops at the 0001 shape, so migration 0002 (not the legacy helper) adds public refs and media."""
+    _make_legacy_db(engine)
+    migrations.ensure_schema(engine)
+    with engine.connect() as c:
+        ref = c.execute(text("SELECT public_ref, tracking_code_hash FROM incidents WHERE id='INC-LEG'")).one()
+        assert ref[0].startswith("RN-") and len(ref[0]) == 17
+        assert ref[1] is None   # no tracking code was ever issued for a pre-existing report
+    assert "media_assets" in inspect(engine).get_table_names()
+
+
+def test_0002_up_down_up_preserves_incident_rows(engine):
+    migrations.upgrade(engine, "0001")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO incidents (id,title,description,area,latitude,longitude,severity,people_affected,"
+                       "status,source,data_label,created_at,updated_at) VALUES ('INC-A','t','d','a',1,1,'LOW',1,'REPORTED',"
+                       "'CITIZEN_REPORT','SIMULATED','2025-01-01','2025-01-01')"))
+    migrations.upgrade(engine)
+    with engine.connect() as c:
+        refs = [r[0] for r in c.execute(text("SELECT public_ref FROM incidents"))]
+    assert len(refs) == 1 and refs[0].startswith("RN-")
+    migrations.downgrade(engine, "0001")
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM incidents")).scalar() == 1
+    migrations.upgrade(engine)
+    assert migrations.schema_drift(engine) == []

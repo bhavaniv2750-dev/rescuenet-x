@@ -19,7 +19,8 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from alembic.autogenerate import compare_metadata
-from sqlalchemy import inspect
+from sqlalchemy import MetaData, create_engine, inspect
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.engine import Engine
 
 from app.core.config import settings
@@ -59,11 +60,11 @@ def schema_drift(engine: Engine) -> list:
 
 
 def _missing_structure(engine: Engine) -> list:
-    """Tables or columns the models have but the database lacks (the only drift that blocks stamping)."""
+    """Baseline tables or columns the database still lacks (the only drift that blocks stamping)."""
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
     missing = []
-    for table in Base.metadata.sorted_tables:
+    for table in baseline_metadata().sorted_tables:
         if table.name not in tables:
             missing.append(table.name)
             continue
@@ -72,17 +73,40 @@ def _missing_structure(engine: Engine) -> list:
     return missing
 
 
-def _create_missing_indexes(engine: Engine) -> list:
-    """create_all() adds no indexes to tables that already exist, so an older database lacks the newer ones."""
+def baseline_metadata() -> MetaData:
+    """The schema exactly as revision 0001 creates it, reflected from a scratch in-memory database."""
+    scratch = create_engine("sqlite://", poolclass=StaticPool)
+    cfg = alembic_config("sqlite://")
+    with scratch.begin() as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, BASELINE_REVISION)
+        md = MetaData()
+        md.reflect(bind=conn)
+    scratch.dispose()
+    md.remove(md.tables["alembic_version"])
+    return md
+
+
+def _bring_to_baseline(engine: Engine) -> list:
+    """Make an older database match revision 0001 (and nothing newer), so later migrations apply cleanly."""
+    base = baseline_metadata()
+    notes = []
     inspector = inspect(engine)
-    made = []
-    for table in Base.metadata.sorted_tables:
+    existing = set(inspector.get_table_names())
+    for table in base.sorted_tables:
+        if table.name not in existing:
+            table.create(bind=engine)
+            notes.append(f"table {table.name}")
+    only = {t.name: {c.name for c in t.columns} for t in base.sorted_tables}
+    notes += [f"column {c}" for c in upgrade_schema(engine, only=only)]
+    inspector = inspect(engine)
+    for table in base.sorted_tables:
         have = {i["name"] for i in inspector.get_indexes(table.name)}
         for index in table.indexes:
             if index.name not in have:
                 index.create(bind=engine)
-                made.append(index.name)
-    return made
+                notes.append(f"index {index.name}")
+    return notes
 
 
 def _run(engine: Engine, fn) -> None:
@@ -127,25 +151,20 @@ def ensure_schema(engine: Engine) -> None:
             _backup_before_change(engine, "pre-migration")
             upgrade(engine)
             print(f"[migrations] Upgraded to {head_revision()}")
-        # Models may not add columns by hand any more, but keep older fix-ups (status renames, backfills) running.
-        upgrade_schema(engine)
+        upgrade_schema(engine, add_columns=False)   # columns belong to migrations now; keep the data fix-ups
         return
 
     if not app_tables:
         upgrade(engine)
-        upgrade_schema(engine)  # no-op on a fresh schema; keeps backfill statements identical on every path
         print(f"[migrations] New database created at revision {head_revision()}")
         return
 
     # Existing database from before Alembic.
     _backup_before_change(engine, "pre-baseline")
-    Base.metadata.create_all(bind=engine)   # tables added by newer code
-    added = upgrade_schema(engine)          # columns added by newer code, legacy status renames, backfills
-    if added:
-        print(f"[migrations] Added missing columns: {', '.join(added)}")
-    made = _create_missing_indexes(engine)
-    if made:
-        print(f"[migrations] Created missing indexes: {', '.join(made)}")
+    notes = _bring_to_baseline(engine)      # tables, columns, indexes of revision 0001 only
+    if notes:
+        print(f"[migrations] Brought to baseline: {', '.join(notes)}")
+    upgrade_schema(engine, add_columns=False)  # legacy status renames and backfills
     missing = _missing_structure(engine)
     if missing:
         raise MigrationError(f"Existing database still lacks {', '.join(missing)}; not stamping it. "

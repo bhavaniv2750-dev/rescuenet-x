@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Building2, LocateFixed, Phone, Siren, Waves } from 'lucide-react';
+import { AlertTriangle, Building2, LocateFixed, Phone, Search, Siren, Waves } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Alert, Facility, RiverGauge } from '../../api/types';
 import type { Page } from '../../auth/access';
@@ -20,6 +20,57 @@ const EMERGENCY_NUMBERS = [
   { n: '101', label: 'Fire' },
   { n: '100', label: 'Police' },
 ];
+
+/** Follow a report with its reference and tracking code. Works without an account. */
+const TrackReport: React.FC = () => {
+  const [ref, setRef] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ status: string; updated_at: string; photo_count: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const lookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await api.trackReport(ref, code));
+    } catch (err: any) {
+      setError(err.message || 'Could not look up that report.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="panel">
+      <div className="panel-title-bar">
+        <div>
+          <h3>
+            <Search size={16} /> Track a report
+          </h3>
+          <p>Enter the reference and tracking code you were given when you reported.</p>
+        </div>
+      </div>
+      <form onSubmit={lookup} style={{ display: 'grid', gap: '8px' }}>
+        <label className="text-xs text-muted" htmlFor="track-ref">Reference (RN-XXXX-XXXX-XXXX)</label>
+        <input id="track-ref" className="select-input" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" required />
+        <label className="text-xs text-muted" htmlFor="track-code">Tracking code</label>
+        <input id="track-code" className="select-input" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" required />
+        <button className="btn-primary" disabled={busy}>{busy ? 'Looking up…' : 'Check status'}</button>
+      </form>
+      {error && <p role="alert" className="text-xs text-orange" style={{ marginTop: '8px' }}>{error}</p>}
+      {result && (
+        <p role="status" style={{ marginTop: '8px' }}>
+          <strong>{result.status}</strong>
+          <br />
+          <small>Last update {new Date(result.updated_at).toLocaleString()} · {result.photo_count} photo(s) attached</small>
+        </p>
+      )}
+    </section>
+  );
+};
 
 /** Landing page for citizens, volunteers and signed-out visitors. */
 export const PublicHomeView: React.FC<Props> = ({ alerts, gauges, facilities, userName, onNavigate }) => {
@@ -180,6 +231,8 @@ export const PublicHomeView: React.FC<Props> = ({ alerts, gauges, facilities, us
             </ul>
           )}
         </section>
+
+        <TrackReport />
 
         <section className="panel emergency-numbers">
           <div className="panel-title-bar">

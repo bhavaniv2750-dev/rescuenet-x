@@ -18,6 +18,8 @@ class IncidentCreate(BaseModel):
     source: str = Field(default="CITIZEN_REPORT")
     incident_type: Optional[str] = "FLOODING"
     image_url: Optional[str] = None
+    # Up to five photos in total (image_url counts as the first). Each must be a URL returned by the upload endpoint.
+    image_urls: Optional[list[str]] = Field(default=None, max_length=5)
     reporter_name: Optional[str] = None
     reporter_contact: Optional[str] = None
     reported_water_depth: Optional[str] = Field(default=None, pattern=_DEPTH_PATTERN)
@@ -67,6 +69,7 @@ class IncidentOut(BaseModel):
     risk_downgraded_by: Optional[str] = None
     risk_downgrade_note: Optional[str] = None
     photo_analysis: Optional[Dict[str, Any]] = None
+    public_ref: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -82,6 +85,13 @@ class IncidentOut(BaseModel):
                 return None
         return v
 
+
+
+class IncidentCreatedOut(IncidentOut):
+    """Response to a new report: the incident plus the one-time tracking code (only its hash is stored)."""
+    tracking_code: Optional[str] = None
+    photos_attached: int = 0
+    photo_warnings: list[str] = []
 
 class IncidentStateChange(BaseModel):
     to_status: str = Field(pattern=_STATUS_PATTERN)

@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="rescuenet_test_")
 os.environ.setdefault("RESCUENET_ENV", "development")
+os.environ.setdefault("UPLOAD_DIR", str(Path(_TEST_DB_DIR) / "uploads"))
 os.environ.setdefault("BACKUP_DIR", str(Path(_TEST_DB_DIR) / "backups"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}")
 
@@ -23,6 +24,13 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_re
 import uuid
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    from app.services import rate_limit
+    rate_limit.reset_all()
+    yield
 
 
 @pytest.fixture(autouse=True)
