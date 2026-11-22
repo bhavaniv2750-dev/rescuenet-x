@@ -44,4 +44,8 @@ def upgrade_schema(engine: Engine) -> list:
         if "incidents" in existing_tables:
             for old, new in LEGACY_STATUS_MAP.items():
                 conn.execute(text("UPDATE incidents SET status = :new WHERE status = :old"), {"new": new, "old": old})
+            # The original assessment of rows that pre-date these columns is not recoverable, so the current
+            # values become the baseline from here on.
+            conn.execute(text("UPDATE incidents SET reported_severity = severity WHERE reported_severity IS NULL"))
+            conn.execute(text("UPDATE incidents SET reported_people_affected = people_affected WHERE reported_people_affected IS NULL"))
     return added

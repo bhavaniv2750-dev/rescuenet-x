@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.api.deps import actor_name, actor_role, get_optional_user, require_roles
 from app.core.config import settings
-from app.core.security import DEPT, OPS
+from app.core.security import APPROVERS, DEPT, OPS
 from app.models.entities import User
 from fastapi import Header
 from app.db.session import get_db
@@ -89,16 +89,64 @@ FIELD_STATES = ("IN_TRANSIT", "ON_SCENE", "RESOLVED")
 
 
 def raise_if_dispatch_blocked(inc: Incident, target: str) -> None:
-    """Dispatch of a gated incident is only possible through POST /agents/tasks/{id}/approve."""
+    """Setting DISPATCHED by editing a status is never allowed.
+
+    An incident is dispatched only together with a team: POST /teams/{id}/assign for ordinary incidents, or a
+    commander's approval (POST /agents/tasks/{id}/approve) for those that need one.
+    """
     if target != "DISPATCHED":
         return
     if lifecycle.normalize(inc.status) == "PENDING_APPROVAL":
         raise HTTPException(status_code=409, detail="Incident is waiting for commander approval; approve its supervisor task to dispatch it.")
-    if lifecycle.requires_commander_approval(inc.people_affected, inc.severity):
+    if lifecycle.incident_requires_approval(inc):
         raise HTTPException(
             status_code=409,
             detail="This incident meets the approval rule (five or more victims, or HIGH or CRITICAL severity). Run supervisor triage and get commander approval before dispatch.",
         )
+    raise HTTPException(
+        status_code=409,
+        detail="An incident is dispatched together with a rescue team, not by changing its status. Use POST /api/teams/{team_id}/assign.",
+    )
+
+
+def _apply_risk_edit(db: Session, inc: Incident, payload: IncidentStatusUpdate, user) -> None:
+    """Edits to severity or people_affected, with the safety rules for lowering them.
+
+    * Raising the risk is allowed for operations staff and is audited.
+    * Lowering the risk of an incident that needs commander approval is allowed only for a commander or
+      administrator, with a written reason; it is audited. Refused attempts are audited too.
+    * The original assessment (reported_severity / reported_people_affected) is never changed.
+    """
+    if payload.severity is None and payload.people_affected is None:
+        return
+    old_sev, old_people = (inc.severity or "").upper(), inc.people_affected
+    new_sev = payload.severity.upper() if payload.severity else old_sev
+    new_people = payload.people_affected if payload.people_affected is not None else old_people
+    if (new_sev, new_people) == (old_sev, old_people):
+        return
+    actor, role = actor_name(user, "operator"), actor_role(user, "OPERATOR")
+    note = (payload.note or "").strip()
+    detail = f"severity {old_sev}->{new_sev}; people {old_people}->{new_people}"
+    lowers = lifecycle.severity_rank(new_sev) < lifecycle.severity_rank(old_sev) or new_people < old_people
+
+    if lowers and lifecycle.incident_requires_approval(inc):
+        if role not in APPROVERS:
+            record_audit(db, actor, "INCIDENT_RISK_DOWNGRADE_DENIED", "incident", inc.id,
+                         f"{detail} | refused: only a commander or administrator may lower the risk of an incident that needs approval", role=role)
+            db.commit()
+            raise HTTPException(
+                status_code=403,
+                detail="Only a commander or administrator can lower the severity or headcount of an incident that needs commander approval.",
+            )
+        if len(note) < 5:
+            raise HTTPException(status_code=422, detail="A written reason (note, at least 5 characters) is required to lower the risk of an incident that needs commander approval.")
+        inc.risk_downgraded_by = actor
+        inc.risk_downgrade_note = note
+        record_audit(db, actor, "INCIDENT_RISK_DOWNGRADE_AUTHORIZED", "incident", inc.id, f"{detail} | {note}", role=role)
+    else:
+        record_audit(db, actor, "INCIDENT_RISK_EDITED", "incident", inc.id, detail + (f" | {note}" if note else ""), role=role)
+    inc.severity = new_sev
+    inc.people_affected = new_people
 
 
 @router.get("/lifecycle")
@@ -383,16 +431,17 @@ def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
 
+    if payload.assigned_team_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A team cannot be attached by editing the incident. Use POST /api/teams/{team_id}/assign "
+                   "(or a commander's approval of a supervisor task), which also marks the team as deployed.",
+        )
+    _apply_risk_edit(db, inc, payload, user)  # before any state change, so a refused edit changes nothing
     if payload.status is not None:
         target = lifecycle.normalize(payload.status)
         raise_if_dispatch_blocked(inc, target)
         lifecycle.transition(db, inc, target, actor=actor_name(user, "operator"), role=actor_role(user, "OPERATOR"))
-    if payload.assigned_team_id is not None:
-        inc.assigned_team_id = payload.assigned_team_id
-    if payload.severity is not None:
-        inc.severity = payload.severity.upper()
-    if payload.people_affected is not None:
-        inc.people_affected = payload.people_affected
 
     db.commit()
     db.refresh(inc)

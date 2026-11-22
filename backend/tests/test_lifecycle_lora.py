@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from tests.conftest import sign_in
+from tests.conftest import make_team, sign_in
 from app.services import incident_lifecycle as lifecycle
 from app.services.trilateration import rssi_to_distance_m, trilaterate
 
@@ -35,7 +35,13 @@ def test_lifecycle_endpoint_lists_all_states():
 
 def test_valid_path_to_resolved_and_history():
     inc = _new_incident()
-    for s in ["UNDER_VERIFICATION", "VERIFIED", "DISPATCHED", "IN_TRANSIT", "ON_SCENE", "RESOLVED"]:
+    for s in ["UNDER_VERIFICATION", "VERIFIED"]:
+        r = _move(inc, s, actor="tester")
+        assert r.status_code == 200, (s, r.text)
+    # Dispatch happens together with a team assignment, not by editing the status.
+    team = make_team(client)
+    assert client.post(f"/api/teams/{team}/assign", json={"incident_id": inc}).status_code == 200
+    for s in ["IN_TRANSIT", "ON_SCENE", "RESOLVED"]:
         r = _move(inc, s, actor="tester")
         assert r.status_code == 200, (s, r.text)
     assert r.json()["verified_by"] == "commander"  # the signed-in user, not a name the caller supplies

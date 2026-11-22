@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.services.geo_service import geo_service
 
+from app.services.team_selection import select_team, valid_coordinates
+
 logger = logging.getLogger("rescuenet.ollama")
 
 
@@ -51,6 +53,7 @@ class SupervisorInferenceResult(BaseModel):
     structured_output: OllamaSupervisorOutput
     validated_team_id: Optional[str] = None
     validated_team_name: Optional[str] = None
+    validated_team_distance_km: Optional[float] = None
     validated_facility_id: Optional[str] = None
     validated_facility_name: Optional[str] = None
     validation_notes: List[str] = Field(default_factory=list)
@@ -123,10 +126,12 @@ class OllamaSupervisorService:
         teams_map = {}
         teams_desc_lines = []
         for t in available_teams:
-            dist = haversine_km(target_lat, target_lon, t.latitude, t.longitude)
+            # A team or incident with unusable coordinates must not break triage; selection skips such teams.
+            usable = valid_coordinates(target_lat, target_lon) and valid_coordinates(t.latitude, t.longitude)
+            dist_text = f"{haversine_km(target_lat, target_lon, t.latitude, t.longitude):.1f} km" if usable else "unknown"
             teams_map[t.id] = t
             teams_desc_lines.append(
-                f"- ID: {t.id} | Name: '{t.name}' | Vehicle: {t.vehicle_type} | Skills: {t.skills} | Distance: {dist:.1f} km | Status: {t.status}"
+                f"- ID: {t.id} | Name: '{t.name}' | Vehicle: {t.vehicle_type} | Skills: {t.skills} | Distance: {dist_text} | Status: {t.status}"
             )
         teams_context = "\n".join(teams_desc_lines) if teams_desc_lines else "None currently AVAILABLE."
 
@@ -319,7 +324,7 @@ class OllamaSupervisorService:
                     f"at {gauge_dist_km:.1f} km. Real-time telemetry not attached."
                 ),
                 risk_assessment=risk,
-                suggested_team_id=available_teams[0].id if available_teams else None,
+                suggested_team_id=(lambda s: s.team.id if s.team else None)(select_team(available_teams, target_lat, target_lon)),
                 suggested_facility_id=candidate_facilities[0].id if candidate_facilities else None,
                 recommended_actions=[
                     f"Dispatch nearest available water rescue unit to ({target_lat:.4f}, {target_lon:.4f}).",
@@ -334,32 +339,14 @@ class OllamaSupervisorService:
         # Step 4: Strict Deterministic Validation of LLM-suggested IDs
         # -------------------------------------------------------------
         validation_notes = []
-        validated_team_id = None
-        validated_team_name = None
-
-        if structured.suggested_team_id and structured.suggested_team_id in teams_map:
-            validated_team_id = structured.suggested_team_id
-            validated_team_name = teams_map[validated_team_id].name
-            validation_notes.append(f"Team ID '{validated_team_id}' verified as AVAILABLE in database.")
-        else:
-            # LLM hallucinated, suggested an invalid ID, or none suggested
-            if structured.suggested_team_id:
-                validation_notes.append(
-                    f"REJECTED hallucinated/invalid team ID '{structured.suggested_team_id}'."
-                )
-            if available_teams:
-                # Deterministically bind the geographically closest available team
-                closest_team = min(
-                    available_teams,
-                    key=lambda t: haversine_km(target_lat, target_lon, t.latitude, t.longitude),
-                )
-                validated_team_id = closest_team.id
-                validated_team_name = closest_team.name
-                validation_notes.append(
-                    f"Deterministically assigned closest available team '{closest_team.name}' ({closest_team.id})."
-                )
-            else:
-                validation_notes.append("No response teams currently AVAILABLE in database.")
+        # The team is always the nearest eligible one (AVAILABLE, valid coordinates), ranked by exact Haversine
+        # distance. A suggestion from the language model can only confirm that choice, never replace it, and the
+        # rule-based fallback goes through exactly the same function.
+        selection = select_team(available_teams, target_lat, target_lon, preferred_id=structured.suggested_team_id)
+        validated_team_id = selection.team.id if selection.team else None
+        validated_team_name = selection.team.name if selection.team else None
+        validated_team_distance_km = selection.distance_km
+        validation_notes.extend(selection.notes)
 
         validated_facility_id = None
         validated_facility_name = None
@@ -415,7 +402,8 @@ class OllamaSupervisorService:
         validation_str = " | ".join(validation_notes)
 
         recommendations_formatted = (
-            f"[1] Recommended Squad: {validated_team_name or 'None'} ({validated_team_id or 'N/A'})\n"
+            f"[1] Recommended Squad: {validated_team_name or 'None'} ({validated_team_id or 'N/A'})"
+            f"{f', {validated_team_distance_km:.1f} km away' if validated_team_distance_km is not None else ''}\n"
             f"[2] Evacuation Facility: {validated_facility_name or 'None'} ({validated_facility_id or 'N/A'})\n"
             f"[3] Tactical Action Plan:\n{actions_str}\n"
             f"[4] DB Verification: {validation_str}\n"
@@ -430,6 +418,7 @@ class OllamaSupervisorService:
             structured_output=structured,
             validated_team_id=validated_team_id,
             validated_team_name=validated_team_name,
+            validated_team_distance_km=validated_team_distance_km,
             validated_facility_id=validated_facility_id,
             validated_facility_name=validated_facility_name,
             validation_notes=validation_notes,

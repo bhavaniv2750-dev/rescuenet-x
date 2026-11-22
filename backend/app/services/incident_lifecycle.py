@@ -7,12 +7,12 @@ Side branches: DUPLICATE and CANCELLED are terminal, and REJECTED (a report
 found invalid, or a dispatch the commander declined) can be re-queued.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.entities import Incident, Volunteer
+from app.models.entities import Incident, RescueTeam, Volunteer
 from app.services.audit import record_audit
 
 STATES: List[str] = [
@@ -63,6 +63,37 @@ def requires_commander_approval(people_affected: int, severity: Optional[str]) -
     return (people_affected or 0) >= 5 or (severity or "").upper() in ("HIGH", "CRITICAL")
 
 
+SEVERITY_RANK = {"LOW": 0, "MODERATE": 1, "HIGH": 2, "CRITICAL": 3}
+
+
+def severity_rank(severity: Optional[str]) -> int:
+    """Unknown or missing severities count as HIGH, so a bad value can never lower the gate."""
+    return SEVERITY_RANK.get((severity or "").upper(), SEVERITY_RANK["HIGH"])
+
+
+def effective_risk(incident: Incident) -> Tuple[str, int]:
+    """(severity, people) the approval rule must use.
+
+    The assessment recorded when the incident was created is kept, and editing the current values can only
+    raise the effective risk, never lower it. The one exception is a downgrade a commander or administrator
+    authorised in writing (risk_downgraded_by), which makes the current values the baseline.
+    """
+    cur_sev = (incident.severity or "HIGH").upper()
+    cur_people = incident.people_affected or 0
+    if incident.risk_downgraded_by:
+        return cur_sev, cur_people
+    orig_sev = (incident.reported_severity or cur_sev).upper()
+    orig_people = incident.reported_people_affected or cur_people
+    sev = cur_sev if severity_rank(cur_sev) >= severity_rank(orig_sev) else orig_sev
+    return sev, max(cur_people, orig_people)
+
+
+def incident_requires_approval(incident: Incident) -> bool:
+    """True when dispatch needs a commander: five or more people, or HIGH or CRITICAL severity."""
+    severity, people = effective_risk(incident)
+    return requires_commander_approval(people, severity)
+
+
 def allowed_next(status: str) -> List[str]:
     return TRANSITIONS.get(normalize(status), [])
 
@@ -74,8 +105,14 @@ def transition(
     actor: str = "operator",
     role: str = "OPERATOR",
     note: Optional[str] = None,
+    approved_by_commander: bool = False,
 ) -> Incident:
-    """Move an incident to a new state, or raise 409 if the move is not allowed."""
+    """Move an incident to a new state, or raise 409 if the move is not allowed.
+
+    DISPATCHED has two extra conditions that no caller can skip: the incident must hold a team that is
+    DEPLOYED, and an incident that needs commander approval may only reach it through that approval
+    (approved_by_commander=True, passed by the approval route).
+    """
     target = normalize(to_status)
     current = normalize(incident.status)
     if target not in STATES:
@@ -87,6 +124,19 @@ def transition(
             status_code=409,
             detail=f"Transition {current} -> {target} is not allowed. Allowed: {', '.join(TRANSITIONS.get(current, [])) or 'none (terminal state)'}",
         )
+    if target == "DISPATCHED":
+        if incident_requires_approval(incident) and not approved_by_commander:
+            raise HTTPException(
+                status_code=409,
+                detail="This incident needs commander approval (five or more people, or HIGH or CRITICAL severity) before it can be dispatched.",
+            )
+        team = db.query(RescueTeam).filter(RescueTeam.id == incident.assigned_team_id).first() if incident.assigned_team_id else None
+        if team is None or (team.status or "").upper() != "DEPLOYED":
+            raise HTTPException(
+                status_code=409,
+                detail="An incident can be DISPATCHED only with a rescue team assigned and deployed to it. "
+                       "Use POST /api/teams/{team_id}/assign (or a commander's approval of a supervisor task).",
+            )
     incident.status = target
     if target in TERMINAL_STATES:
         # Volunteers on a finished incident become available again.

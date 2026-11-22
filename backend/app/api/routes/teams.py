@@ -1,19 +1,20 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from app.api.deps import actor_name, require_roles
+from app.api.deps import actor_name, actor_role, require_roles
 from app.core.security import APPROVERS, DEPT, OPS
 from app.db.session import get_db
 from app.models.entities import Incident, RescueTeam, User
 from app.schemas.domain import RescueTeamCreate, RescueTeamOut
 from app.services import incident_lifecycle as lifecycle
 from app.services.audit import record_audit
+from app.services.dispatch import dispatch_incident_to_team
 
 router = APIRouter()
 
 class TeamStatusUpdate(BaseModel):
-    status: str  # AVAILABLE, DEPLOYED, STANDBY
+    status: str = Field(pattern="(?i)^(AVAILABLE|DEPLOYED|STANDBY)$")  # AVAILABLE, DEPLOYED, STANDBY
 
 class TeamAssignRequest(BaseModel):
     incident_id: str
@@ -60,7 +61,19 @@ def update_team_status(team_id: str, payload: TeamStatusUpdate, db: Session = De
     if not team:
         raise HTTPException(status_code=404, detail=f"Rescue team {team_id} not found")
 
-    team.status = payload.status.upper()
+    new_status = payload.status.upper()
+    if new_status == "AVAILABLE" and (team.status or "").upper() != "AVAILABLE":
+        # A team on a live mission cannot be freed: it would show as bookable while still out in the field.
+        active = db.query(Incident).filter(
+            Incident.assigned_team_id == team.id,
+            Incident.status.in_(["DISPATCHED", "IN_TRANSIT", "ON_SCENE"]),
+        ).first()
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Team {team.id} is on an active mission ({active.id}, {active.status}). Resolve or cancel the incident before releasing the team.",
+            )
+    team.status = new_status
     db.commit()
     db.refresh(team)
     return RescueTeamOut.model_validate(team)
@@ -76,25 +89,14 @@ def assign_team_to_incident(team_id: str, payload: TeamAssignRequest, db: Sessio
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {payload.incident_id} not found")
 
-    if team.status != "AVAILABLE":
-        raise HTTPException(status_code=409, detail=f"Team {team.id} is {team.status}, not AVAILABLE")
-    current = lifecycle.normalize(incident.status)
-    if current != "DISPATCHED":
-        # Safety gate: high-impact incidents need a commander-approved supervisor task first.
-        if current != "PENDING_APPROVAL" and lifecycle.requires_commander_approval(incident.people_affected, incident.severity):
-            raise HTTPException(
-                status_code=409,
-                detail="This incident needs commander approval (five or more victims, or HIGH or CRITICAL severity). Run supervisor triage and approve the task.",
-            )
-        if current == "PENDING_APPROVAL":
-            raise HTTPException(status_code=409, detail="Incident is waiting for commander approval; approve the supervisor task to dispatch it.")
-        lifecycle.transition(db, incident, "DISPATCHED", actor=actor_name(user, "operator"), note=f"team {team.id}")
-
-    incident.assigned_team_id = team.id
-    team.status = "DEPLOYED"
-    record_audit(db, actor_name(user, "operator"), "TEAM_ASSIGNED", "incident", incident.id, team.id, role="OPERATOR")
-
+    # One routine claims the team (atomic conditional update), enforces the commander-approval gate and moves the
+    # incident to DISPATCHED. Nothing is committed unless every step succeeds.
+    dispatch_incident_to_team(
+        db, incident, team.id, actor=actor_name(user, "operator"), role=actor_role(user, "OPERATOR"),
+    )
     db.commit()
+    db.refresh(team)
+    db.refresh(incident)
     return {
         "message": f"Team {team.name} assigned to incident {incident.id}",
         "team_id": team.id,

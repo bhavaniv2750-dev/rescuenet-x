@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import (
+    event,
     Boolean,
     Column,
     DateTime,
@@ -42,10 +43,26 @@ class Incident(Base):
     # Depth as judged by the person reporting: ANKLE, KNEE, WAIST, CHEST_OR_DEEPER or UNKNOWN
     reported_water_depth = Column(String(20), nullable=True)
     reporter_user_id = Column(Integer, nullable=True, index=True)  # set when a logged-in user reports
+    # The risk assessment as first recorded. Never edited afterwards: the commander-approval rule uses the
+    # higher of these and the current values, so lowering severity or headcount cannot lift the gate.
+    reported_severity = Column(String(20), nullable=True)
+    reported_people_affected = Column(Integer, nullable=True)
+    # Set only when a commander or administrator authorised a lower assessment (with a written reason).
+    risk_downgraded_by = Column(String(100), nullable=True)
+    risk_downgrade_note = Column(Text, nullable=True)
     # JSON summary of the photo analysis (PREDICTED), if a photo was analysed
     photo_analysis = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+@event.listens_for(Incident, "before_insert")
+def _record_original_risk(mapper, connection, target):
+    """Freeze the first assessment on every creation path (API, LoRa, seed data)."""
+    if target.reported_severity is None:
+        target.reported_severity = (target.severity or "HIGH").upper()
+    if target.reported_people_affected is None:
+        target.reported_people_affected = target.people_affected if target.people_affected is not None else 1
 
 
 class Beacon(Base):

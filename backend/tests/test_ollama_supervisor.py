@@ -124,7 +124,10 @@ def test_ollama_structured_response_unit(db_session):
         assert isinstance(result.structured_output, OllamaSupervisorOutput)
         assert result.structured_output.risk_assessment == "CRITICAL"
         assert len(result.structured_output.recommended_actions) == 3
-        assert result.validated_team_id == available_teams[0].id
+        # The model suggested available_teams[0]; the validated choice is the nearest available team
+        # (computed here independently with plain Haversine), which may or may not be that team.
+        nearest = min(available_teams, key=lambda t: haversine_km(incident.latitude, incident.longitude, t.latitude, t.longitude))
+        assert result.validated_team_id == nearest.id
         assert result.enforced_requires_approval is True
         assert "CRITICAL" in result.findings_formatted
 

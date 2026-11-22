@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.facilities import capacity_status
-from tests.conftest import sign_in
+from tests.conftest import make_team, sign_in
 
 ops = sign_in(TestClient(app), "operator")
 
@@ -16,7 +16,8 @@ def _dispatched_incident():
         "title": "Volunteer test", "description": "Street flooded", "area": "Hebbal",
         "latitude": 13.03, "longitude": 77.59, "severity": "LOW", "people_affected": 1}).json()["id"]
     assert ops.post(f"/api/incidents/{inc}/state", json={"to_status": "VERIFIED"}).status_code == 200
-    assert ops.post(f"/api/incidents/{inc}/state", json={"to_status": "DISPATCHED"}).status_code == 200
+    team = make_team(ops)
+    assert ops.post(f"/api/teams/{team}/assign", json={"incident_id": inc}).status_code == 200
     return inc
 
 

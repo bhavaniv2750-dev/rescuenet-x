@@ -30,10 +30,13 @@ _STATUS_PATTERN = (
 
 class IncidentStatusUpdate(BaseModel):
     status: Optional[str] = Field(None, pattern=_STATUS_PATTERN)
+    # Accepted only so old clients get a clear refusal: teams are attached by POST /teams/{id}/assign.
     assigned_team_id: Optional[str] = None
-    severity: Optional[str] = None
-    people_affected: Optional[int] = None
+    severity: Optional[str] = Field(None, pattern="(?i)^(CRITICAL|HIGH|MODERATE|LOW)$")
+    people_affected: Optional[int] = Field(None, ge=1, le=100000)
     image_url: Optional[str] = None
+    # Required (5+ characters) when a commander lowers the risk of an incident that needs approval.
+    note: Optional[str] = Field(None, max_length=500)
 
 class IncidentOut(BaseModel):
     id: str
@@ -59,6 +62,10 @@ class IncidentOut(BaseModel):
     verified_by: Optional[str] = None
     duplicate_of: Optional[str] = None
     reported_water_depth: Optional[str] = None
+    reported_severity: Optional[str] = None
+    reported_people_affected: Optional[int] = None
+    risk_downgraded_by: Optional[str] = None
+    risk_downgrade_note: Optional[str] = None
     photo_analysis: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime

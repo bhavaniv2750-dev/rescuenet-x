@@ -11,6 +11,7 @@ from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask, 
 from app.schemas.domain import SupervisorTaskDecision, SupervisorTaskOut, SupervisorTaskRequest
 from app.services import incident_lifecycle as lifecycle
 from app.services.audit import record_audit
+from app.services.dispatch import dispatch_incident_to_team
 from app.services.geo_service import geo_service
 from app.services.ollama_service import haversine_km, ollama_supervisor_service
 
@@ -113,7 +114,8 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
             target_lon = incident.longitude
             target_title = incident.title
             target_area = incident.area
-            people_count = incident.people_affected
+            # The original assessment counts: editing the headcount down must not change the triage.
+            people_count = lifecycle.effective_risk(incident)[1]
         else:
             target_title = f"Unregistered Incident Reference ({payload.incident_id})"
             target_area = payload.area or "Unknown Area"
@@ -151,6 +153,15 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
         gauge_dist_km=min_gauge_dist,
     )
 
+    # The commander-approval rule is evaluated on the original assessment, whatever the supervisor concluded.
+    requires_approval = bool(result.enforced_requires_approval or (incident is not None and lifecycle.incident_requires_approval(incident)))
+    findings_text, recommendations_text = result.findings_formatted, result.recommendations_formatted
+    if requires_approval and not result.enforced_requires_approval:
+        recommendations_text += (
+            "\n[6] Safety Policy (override): the original risk assessment of this incident requires commander "
+            "authorization before dispatch."
+        )
+
     # 5. Deterministic Task ID and Database Persistence
     count = db.query(SupervisorTask).count()
     task_id = f"TASK-{803 + count}"
@@ -159,20 +170,20 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
         id=task_id,
         task_type=payload.task_type.upper(),
         title=f"Autonomous Triage: {target_area} ({target_title[:40]})",
-        status="PENDING_APPROVAL" if result.enforced_requires_approval else "COMPLETED",
+        status="PENDING_APPROVAL" if requires_approval else "COMPLETED",
         agent_flow=f"Supervisor (Ollama {result.model_name}) -> Geospatial Catchments -> Logistics Dispatch -> Safety Gatekeeper",
         input_summary=f"Incident: {target_title} | Area: {target_area} | Affected: {people_count} | Directive: {payload.instruction or 'Full Tactical Triage'}",
-        findings=result.findings_formatted,
-        recommendations=result.recommendations_formatted,
-        requires_human_approval=result.enforced_requires_approval,
-        approved_by=None if result.enforced_requires_approval else "Automated Agent Policy Guard",
+        findings=findings_text,
+        recommendations=recommendations_text,
+        requires_human_approval=requires_approval,
+        approved_by=None if requires_approval else "Automated Agent Policy Guard",
         incident_id=incident.id if incident else None,
         suggested_team_id=result.validated_team_id,
         suggested_facility_id=result.validated_facility_id,
     )
     db.add(task)
     record_audit(db, "supervisor-agent", "TRIAGE_COMPLETED", "task", task_id,
-                 f"model {result.model_name} ({result.model_status}); approval required: {result.enforced_requires_approval}", role="AGENT")
+                 f"model {result.model_name} ({result.model_status}); approval required: {requires_approval}", role="AGENT")
 
     # Move the incident through the lifecycle. The gate result decides whether a commander must approve.
     if incident is not None:
@@ -180,7 +191,7 @@ async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session 
         if current in ("VERIFIED", "QUEUED"):
             lifecycle.transition(db, incident, "TRIAGE_IN_PROGRESS", actor="supervisor-agent", role="AGENT", note=task_id)
             current = "TRIAGE_IN_PROGRESS"
-        if current == "TRIAGE_IN_PROGRESS" and result.enforced_requires_approval:
+        if current == "TRIAGE_IN_PROGRESS" and requires_approval:
             lifecycle.transition(db, incident, "PENDING_APPROVAL", actor="safety-gate", role="SYSTEM", note=task_id)
 
     db.commit()
@@ -207,28 +218,36 @@ def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
 @router.post("/tasks/{task_id}/approve", response_model=SupervisorTaskOut)
 def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
                             user: User = Depends(require_roles(*APPROVERS))):
-    """Commander approves the plan. The linked incident is dispatched to the suggested team, if one is free."""
+    """Commander approves the plan. The linked incident is dispatched only if the suggested team can really be
+    sent: it must still be AVAILABLE and is claimed atomically. Otherwise nothing changes and the approval is refused."""
     payload = _decider(payload, user)
     task = _get_pending_task(db, task_id)
-    now = datetime.now(timezone.utc)
+
+    incident = db.query(Incident).filter(Incident.id == task.incident_id).first() if task.incident_id else None
+    if incident is not None and lifecycle.normalize(incident.status) == "PENDING_APPROVAL":
+        try:
+            if not task.suggested_team_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This plan has no rescue team to send, so approving it would not dispatch anyone. "
+                           "Decline it, or run triage again when a team is available.",
+                )
+            dispatch_incident_to_team(
+                db, incident, task.suggested_team_id, actor=payload.commander, role="COMMANDER",
+                note=f"approved {task.id}", commander_approved=True,
+            )
+        except HTTPException as exc:
+            db.rollback()  # undo any partial work; keep a record that the approval was refused
+            record_audit(db, payload.commander, "TASK_APPROVAL_BLOCKED", "incident", incident.id, f"{task.id}: {exc.detail}", role="COMMANDER")
+            db.commit()
+            raise
+
     task.status = "APPROVED"
     task.requires_human_approval = False
     task.approved_by = payload.commander
     task.decision_note = payload.note
-    task.updated_at = now
+    task.updated_at = datetime.now(timezone.utc)
     record_audit(db, payload.commander, "TASK_APPROVED", "task", task.id, payload.note, role="COMMANDER")
-
-    if task.incident_id:
-        incident = db.query(Incident).filter(Incident.id == task.incident_id).first()
-        if incident and lifecycle.normalize(incident.status) == "PENDING_APPROVAL":
-            team = None
-            if task.suggested_team_id:
-                team = db.query(RescueTeam).filter(RescueTeam.id == task.suggested_team_id, RescueTeam.status == "AVAILABLE").first()
-            lifecycle.transition(db, incident, "DISPATCHED", actor=payload.commander, role="COMMANDER", note=f"approved {task.id}")
-            if team is not None:
-                incident.assigned_team_id = team.id
-                team.status = "DEPLOYED"
-                record_audit(db, payload.commander, "TEAM_ASSIGNED", "incident", incident.id, team.id, role="COMMANDER")
 
     db.commit()
     db.refresh(task)
