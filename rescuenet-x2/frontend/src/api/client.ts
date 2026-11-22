@@ -22,38 +22,77 @@ export function assetUrl(path?: string | null): string {
   return `${API_BASE_URL.replace(/\/api\/?$/, '')}${path}`;
 }
 
-// ---- session token (sessionStorage by default, localStorage when "remember me" is ticked) ----
-const TOKEN_KEY = 'rescuenet.token';
+// ---- session ----
+// The short-lived access token lives ONLY in memory (never localStorage or sessionStorage). The long-lived refresh token is
+// an HttpOnly cookie the page cannot read. A page reload therefore restores the session by calling /auth/refresh.
+const LEGACY_TOKEN_KEY = 'rescuenet.token';
+let accessToken: string | null = null;
+let csrfToken: string | null = null;
+
+// Remove any token the previous (pre-S2) version left in browser storage.
+try {
+  sessionStorage.removeItem(LEGACY_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+} catch {
+  /* storage blocked: nothing to clean */
+}
+
+function readCookie(name: string): string | null {
+  const m = document.cookie.split('; ').find((c) => c.startsWith(name + '='));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
+}
 
 export const tokenStore = {
   get(): string | null {
-    try {
-      return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
+    return accessToken;
   },
-  set(token: string, remember: boolean) {
-    try {
-      this.clear();
-      (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
-    } catch {
-      /* storage blocked: the session lasts until the page reloads */
-    }
+  set(token: string, csrf?: string) {
+    accessToken = token;
+    if (csrf) csrfToken = csrf;
   },
   clear() {
-    try {
-      sessionStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* ignore */
-    }
+    accessToken = null;
+    csrfToken = null;
   },
 };
 
 export const UNAUTHORIZED_EVENT = 'rescuenet:unauthorized';
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+type SessionResponse = import('./types').TokenResponse;
+let refreshing: Promise<SessionResponse | null> | null = null;
+
+/** Exchange the refresh cookie for a new access token. One request at a time in this tab, and one at a time across tabs
+ *  (Web Locks), because a refresh token can be used only once: two simultaneous uses would look like theft. */
+export function refreshSession(): Promise<SessionResponse | null> {
+  if (refreshing) return refreshing;
+  const run = async (): Promise<SessionResponse | null> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': readCookie('rn_csrf') || csrfToken || '' },
+      });
+      if (!res.ok) {
+        if (res.status === 401) tokenStore.clear();
+        return null;
+      }
+      const body = (await res.json()) as SessionResponse;
+      tokenStore.set(body.access_token, body.csrf_token);
+      return body;
+    } catch {
+      return null; // network problem: keep what we have and try again later
+    }
+  };
+  const locks = (navigator as Navigator & { locks?: { request: <T>(n: string, cb: () => Promise<T>) => Promise<T> } }).locks;
+  refreshing = (locks ? locks.request('rescuenet-refresh', run) : run()).finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+const usesCookies = (endpoint: string) => endpoint.startsWith('/auth/');
+
+async function request<T>(endpoint: string, options: RequestInit = {}, retried = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = tokenStore.get();
   const headers: Record<string, string> = {
@@ -62,8 +101,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(url, { ...options, headers });
-  if (response.status === 401 && token && !endpoint.startsWith('/auth/login')) {
+  const response = await fetch(url, { ...options, headers, credentials: usesCookies(endpoint) ? 'include' : 'same-origin' });
+  if (response.status === 401 && token && !retried && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh')) {
+    // The access token expired (or was revoked). Try once to get a new one; if that fails the session is over.
+    const renewed = await refreshSession();
+    if (renewed) return request<T>(endpoint, options, true);
     window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
   }
   if (!response.ok) {
@@ -95,13 +137,25 @@ export const capUrl = (alertId: string) => `${API_BASE_URL}/alerts/${encodeURICo
 export const api = {
   // ---- authentication ----
   getPortals: () => request<import('./types').PortalInfo>('/auth/portals'),
-  login: (portal: string, username: string, password: string) =>
-    request<import('./types').TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password }) }),
+  login: (portal: string, username: string, password: string, remember = false) =>
+    request<import('./types').TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password, remember }) }),
+  logout: () => request<{ message: string }>('/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': readCookie('rn_csrf') || csrfToken || '' } }),
+  logoutAll: () => request<{ message: string; sessions_ended: number }>('/auth/logout-all', { method: 'POST' }),
+  getSessions: () => request<{ items: import('./types').SessionInfo[]; count: number }>('/auth/sessions'),
+  revokeSession: (id: string) => request<{ message: string; was_current: boolean }>(`/auth/sessions/${id}`, { method: 'DELETE' }),
+  revokeUserSessions: (userId: number) => request<{ message: string }>(`/auth/users/${userId}/revoke-sessions`, { method: 'POST' }),
   register: (payload: import('./types').RegisterPayload) =>
     request<import('./types').TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   getMe: () => request<import('./types').AuthUser>('/auth/me'),
-  changePassword: (current_password: string, new_password: string) =>
-    request<{ message: string }>('/auth/me/password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
+  /** Every session ends when the password changes; the server starts a fresh one for this device and returns its tokens. */
+  changePassword: async (current_password: string, new_password: string) => {
+    const res = await request<{ message: string; sessions_ended: number } & import('./types').TokenResponse>('/auth/me/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    });
+    tokenStore.set(res.access_token, res.csrf_token);
+    return res;
+  },
   getUsers: () => request<{ items: import('./types').AuthUser[]; count: number; roles: string[] }>('/auth/users'),
   createUser: (payload: Record<string, unknown>) =>
     request<import('./types').AuthUser>('/auth/users', { method: 'POST', body: JSON.stringify(payload) }),

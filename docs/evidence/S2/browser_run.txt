@@ -1,0 +1,13 @@
+legacy token keys after load: [null,null]
+signed in, nav visible: true
+cookies: rn_refresh httpOnly=true secure=false sameSite=Lax path=/api/auth | rn_csrf httpOnly=false secure=false sameSite=Lax path=/
+document.cookie sees: rn_csrf
+storage keys: [["seeded"],[]]
+after reload still signed in: true
+refresh cookie rotated by reload: true
+in 42 s: refresh calls=1 statuses=200; 401 responses=0
+still signed in after access token lifetime passed: true
+admin revoke status: 200
+after revocation the app shows the sign-in page
+after sign out refresh cookie present: 0
+refresh after logout: 401

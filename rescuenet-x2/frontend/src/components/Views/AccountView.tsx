@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABEL } from '../../auth/access';
+import type { SessionInfo } from '../../api/types';
 import { cleanMessage, toast } from '../../lib/toast';
 
 export const AccountView: React.FC = () => {
@@ -10,6 +11,14 @@ export const AccountView: React.FC = () => {
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+
+  const loadSessions = useCallback(() => {
+    api.getSessions().then((r) => setSessions(r.items)).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
 
   if (!user) return null;
 
@@ -21,7 +30,8 @@ export const AccountView: React.FC = () => {
     setBusy(true);
     try {
       await api.changePassword(current, next);
-      toast.success('Password changed.');
+      toast.success('Password changed. Other devices were signed out.');
+      loadSessions();
       setCurrent('');
       setNext('');
       setAgain('');
@@ -99,6 +109,43 @@ export const AccountView: React.FC = () => {
           </form>
         </section>
       </div>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-title-bar">
+          <div>
+            <h3>Where you are signed in</h3>
+            <p>Sign out of any device you do not recognise. Changing your password signs out every other device.</p>
+          </div>
+          <button
+            className="btn-secondary"
+            onClick={() => api.logoutAll().then(() => logout()).catch((e) => toast.error(cleanMessage(e)))}
+          >
+            Sign out everywhere
+          </button>
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr><th>Device</th><th>Signed in</th><th>Last active</th><th>Ends</th><th /></tr>
+          </thead>
+          <tbody>
+            {sessions.map((s) => (
+              <tr key={s.id}>
+                <td>{s.user_agent ? s.user_agent.slice(0, 60) : 'Unknown device'} {s.current && <strong>(this device)</strong>}</td>
+                <td>{new Date(s.created_at + 'Z').toLocaleString()}</td>
+                <td>{new Date(s.last_used_at + 'Z').toLocaleString()}</td>
+                <td>{new Date(s.expires_at + 'Z').toLocaleString()}</td>
+                <td>
+                  {!s.current && (
+                    <button className="btn-secondary btn-xs" onClick={() => api.revokeSession(s.id).then(loadSessions).catch((e) => toast.error(cleanMessage(e)))}>
+                      Sign out
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 };

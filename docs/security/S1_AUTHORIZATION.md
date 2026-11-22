@@ -42,12 +42,12 @@ Single source of truth: `backend/app/core/permissions.py`. The full role × perm
 Enforced and tested now: demotion/promotion/deactivation/reactivation/team reassignment take effect on the next request with
 the old token; a token whose role claim differs from the database role gains nothing; admins cannot disable or demote
 themselves; role changes and admin password resets are audited.
-**Limitation until S2:** there is no token revocation. A token already issued to a still-active account stays valid until it
+**Resolved in S2 (see S2_SESSIONS.md):** sessions are now server-side and revocable. The S1 text follows for history: there was no token revocation. A token already issued to a still-active account stays valid until it
 expires (480 minutes), also after a password change (pinned by `test_KNOWN_LIMITATION_*`). S2 introduces sessions and token
 versioning and changes this on purpose (no grace period, immediate invalidation with clear re-login messaging).
 
 ## Remaining limitations (honest list)
-1. **Admin credential control:** an administrator can create staff accounts and reset their passwords. That is a path to
+1. **Admin credential control (CLOSED in S2):** an administrator could create staff accounts and reset their passwords. That is a path to
    operational power (provision a commander, then sign in as them). Audited, but not prevented. Closed by S3 (self-service
    recovery, no admin-set passwords for staff), S4 (mandatory MFA for commander/admin/developer) and S5 (invitations).
 2. **MFA and verified-contact requirements** for privileged roles are not enforced yet (S3/S4); the plan requires them.

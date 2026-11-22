@@ -219,7 +219,7 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
 
             <label className="check-row">
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-              Keep me signed in on this device
+              Keep me signed in on this device (citizens and volunteers; staff sessions always end after a shift)
             </label>
 
             {error && (

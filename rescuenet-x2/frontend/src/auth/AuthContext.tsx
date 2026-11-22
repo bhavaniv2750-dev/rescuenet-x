@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { api, refreshSession, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
 import type { AuthUser, PortalId, RegisterPayload } from '../api/types';
 import { toast } from '../lib/toast';
 
@@ -17,47 +17,75 @@ const Ctx = createContext<AuthState | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [restoring, setRestoring] = useState<boolean>(() => !!tokenStore.get());
+  // Always true on first load: the session is restored from the HttpOnly refresh cookie, not from browser storage.
+  const [restoring, setRestoring] = useState<boolean>(true);
+  const timer = useRef<number | undefined>(undefined);
 
-  const logout = useCallback(() => {
+  const clearTimer = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = undefined;
+  };
+
+  // Renew the access token shortly before it expires so people are never interrupted.
+  const scheduleRefresh = useCallback((expiresInSeconds: number) => {
+    clearTimer();
+    timer.current = window.setTimeout(async () => {
+      const renewed = await refreshSession();
+      if (renewed) scheduleRefresh(renewed.expires_in);
+      else if (tokenStore.get() === null) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+      else scheduleRefresh(60); // network problem: try again in a minute
+    }, Math.max(15, expiresInSeconds * 0.8) * 1000);
+  }, []);
+
+  const endLocalSession = useCallback(() => {
+    clearTimer();
     tokenStore.clear();
     setUser(null);
   }, []);
 
-  // Restore a saved session.
-  useEffect(() => {
-    if (!tokenStore.get()) return;
-    api
-      .getMe()
-      .then(setUser)
-      .catch(() => tokenStore.clear())
-      .finally(() => setRestoring(false));
-  }, []);
+  const logout = useCallback(() => {
+    api.logout().catch(() => undefined).finally(endLocalSession);
+  }, [endLocalSession]);
 
-  // Any 401 from the API means the token expired or the account was disabled.
+  // Restore a session after a page load or reload.
+  useEffect(() => {
+    let cancelled = false;
+    refreshSession()
+      .then((res) => {
+        if (cancelled || !res) return;
+        setUser(res.user);
+        scheduleRefresh(res.expires_in);
+      })
+      .finally(() => !cancelled && setRestoring(false));
+    return () => {
+      cancelled = true;
+      clearTimer();
+    };
+  }, [scheduleRefresh]);
+
+  // The API refused us and a refresh did not help: the session was ended (expired, signed out elsewhere, role or password
+  // changed, account disabled).
   useEffect(() => {
     const onUnauthorized = () => {
-      if (!tokenStore.get()) return;
-      logout();
+      if (!tokenStore.get() && !user) return;
+      endLocalSession();
       toast.info('Your session ended. Please sign in again.');
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
-  }, [logout]);
+  }, [endLocalSession, user]);
 
-  const login: AuthState['login'] = async (portal, username, password, remember) => {
-    const res = await api.login(portal, username.trim(), password);
-    tokenStore.set(res.access_token, remember);
+  const adopt = (res: { access_token: string; csrf_token: string; expires_in: number; user: AuthUser }) => {
+    tokenStore.set(res.access_token, res.csrf_token);
     setUser(res.user);
+    scheduleRefresh(res.expires_in);
     return res.user;
   };
 
-  const register: AuthState['register'] = async (payload, remember) => {
-    const res = await api.register(payload);
-    tokenStore.set(res.access_token, remember);
-    setUser(res.user);
-    return res.user;
-  };
+  const login: AuthState['login'] = async (portal, username, password, remember) =>
+    adopt(await api.login(portal, username.trim(), password, remember));
+
+  const register: AuthState['register'] = async (payload) => adopt(await api.register(payload));
 
   const refreshUser = async () => {
     try {

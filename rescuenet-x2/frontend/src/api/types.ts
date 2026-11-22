@@ -470,7 +470,20 @@ export interface AuthUser {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  /** Seconds until the access token expires (the refresh token is an HttpOnly cookie and is never in the body). */
+  expires_in: number;
+  csrf_token: string;
   user: AuthUser;
+}
+
+export interface SessionInfo {
+  id: string;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+  user_agent?: string | null;
+  remember: boolean;
+  current: boolean;
 }
 
 export interface PortalInfo {

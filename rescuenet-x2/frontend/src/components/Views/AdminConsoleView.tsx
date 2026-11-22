@@ -6,7 +6,10 @@ import { ROLE_LABEL } from '../../auth/access';
 import { useAuth } from '../../auth/AuthContext';
 import { cleanMessage, toast } from '../../lib/toast';
 
-const STAFF_ROLES: Role[] = ['ADMIN', 'DEVELOPER', 'COMMANDER', 'OPERATOR', 'RESCUE_OFFICER'];
+// Administrators create public accounts only. Staff, administrator and developer accounts cannot be created or have
+// their password set from here (that would hand the administrator their authority); see docs/security/S2_SESSIONS.md.
+const CREATABLE_ROLES: Role[] = ['CITIZEN', 'VOLUNTEER'];
+const PUBLIC_ROLE_SET = new Set<Role>(['CITIZEN', 'VOLUNTEER']);
 
 interface Props {
   /** Commanders get the audit log only. Administrators also manage accounts. */
@@ -76,7 +79,7 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
           </button>
           {canManageUsers && tab === 'users' && (
             <button className="btn-primary" onClick={() => setShowCreate(true)}>
-              <UserPlus size={14} /> New staff account
+              <UserPlus size={14} /> New public account
             </button>
           )}
         </div>
@@ -135,8 +138,22 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
                     </td>
                     <td>
                       <div className="action-button-group">
-                        <button className="btn-secondary btn-xs" onClick={() => resetPassword(u)}>
-                          Reset password
+                        {PUBLIC_ROLE_SET.has(u.role) ? (
+                          <button className="btn-secondary btn-xs" onClick={() => resetPassword(u)}>
+                            Reset password
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted" title="Staff passwords can only be changed by their owner or, for a lock-out, by a server operator.">
+                            Owner-controlled
+                          </span>
+                        )}
+                        <button
+                          className="btn-secondary btn-xs"
+                          disabled={u.id === me?.id}
+                          title="End every session of this account"
+                          onClick={() => api.revokeUserSessions(u.id).then((r) => toast.success(r.message)).catch((e) => toast.error(cleanMessage(e)))}
+                        >
+                          Sign out everywhere
                         </button>
                         <button
                           className="btn-secondary btn-xs"
@@ -245,7 +262,7 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
 };
 
 const CreateUserModal: React.FC<{ teams: { id: string; name: string }[]; onClose: () => void; onCreated: () => void }> = ({ teams, onClose, onCreated }) => {
-  const [role, setRole] = useState<Role>('OPERATOR');
+  const [role, setRole] = useState<Role>('CITIZEN');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
@@ -276,16 +293,21 @@ const CreateUserModal: React.FC<{ teams: { id: string; name: string }[]; onClose
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>New staff account</h3>
+          <h3>New public account</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
         <form onSubmit={submit} className="login-form" style={{ padding: 16 }}>
+          <div className="form-notice form-notice-info">
+            Staff, administrator and developer accounts are not created here: an administrator must not choose another
+            person's operational credentials. They are provisioned by a server operator (see the S2 notes) until owner-controlled
+            invitations are available.
+          </div>
           <label>
             Role
             <select className="select-input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              {STAFF_ROLES.map((r) => (
+              {CREATABLE_ROLES.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABEL[r]}
                 </option>
@@ -301,7 +323,7 @@ const CreateUserModal: React.FC<{ teams: { id: string; name: string }[]; onClose
             <input value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" required />
           </label>
           <label>
-            Temporary password
+            Initial password
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
             <span className="field-help">At least 8 characters, mixing letters with numbers or symbols. Ask them to change it at first sign-in.</span>
           </label>
