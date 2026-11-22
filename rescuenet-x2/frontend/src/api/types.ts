@@ -448,7 +448,7 @@ export interface VisionAnalysis {
 
 export type WaterDepth = 'ANKLE' | 'KNEE' | 'WAIST' | 'CHEST_OR_DEEPER' | 'UNKNOWN';
 
-export type Role = 'ADMIN' | 'COMMANDER' | 'OPERATOR' | 'RESCUE_OFFICER' | 'VOLUNTEER' | 'CITIZEN';
+export type Role = 'ADMIN' | 'DEVELOPER' | 'COMMANDER' | 'OPERATOR' | 'RESCUE_OFFICER' | 'VOLUNTEER' | 'CITIZEN';
 export type PortalId = 'public' | 'operations' | 'admin';
 
 export interface AuthUser {
@@ -458,6 +458,8 @@ export interface AuthUser {
   email?: string | null;
   phone?: string | null;
   role: Role;
+  /** What this role may do. Informational: the API enforces it on every call. */
+  permissions?: string[];
   portal: PortalId | '';
   team_id?: string | null;
   volunteer_id?: string | null;

@@ -23,6 +23,7 @@ import { SupervisorView } from './components/Views/SupervisorView';
 import { DatasetsView } from './components/Views/DatasetsView';
 import { SettingsView } from './components/Views/SettingsView';
 import { PublicHomeView } from './components/Views/PublicHomeView';
+import { DiagnosticsView } from './components/Views/DiagnosticsView';
 import { ReportReceipt, type ReportReceiptData } from './components/UI/ReportReceipt';
 import { MyWorkView } from './components/Views/MyWorkView';
 import { AccountView } from './components/Views/AccountView';
@@ -239,6 +240,8 @@ function Shell() {
           {activePage === 'AI Supervisor' && <SupervisorView incidents={incidents} canApprove={canApprove(role)} />}
 
           {activePage === 'Data & Models' && <DatasetsView />}
+
+          {activePage === 'Diagnostics' && <DiagnosticsView />}
 
           {activePage === 'Admin Console' && <AdminConsoleView canManageUsers teams={teams} />}
           {activePage === 'Audit Log' && <AdminConsoleView canManageUsers={false} teams={teams} />}

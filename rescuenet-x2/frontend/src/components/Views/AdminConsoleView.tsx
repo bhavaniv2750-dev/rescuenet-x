@@ -6,7 +6,7 @@ import { ROLE_LABEL } from '../../auth/access';
 import { useAuth } from '../../auth/AuthContext';
 import { cleanMessage, toast } from '../../lib/toast';
 
-const STAFF_ROLES: Role[] = ['ADMIN', 'COMMANDER', 'OPERATOR', 'RESCUE_OFFICER'];
+const STAFF_ROLES: Role[] = ['ADMIN', 'DEVELOPER', 'COMMANDER', 'OPERATOR', 'RESCUE_OFFICER'];
 
 interface Props {
   /** Commanders get the audit log only. Administrators also manage accounts. */
@@ -24,10 +24,12 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
   const [filter, setFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [showCreate, setShowCreate] = useState(false);
+  const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
 
   const load = useCallback(async () => {
     try {
       if (canManageUsers) {
+        setTeamOptions((await api.getTeamOptions()).items);
         setUsers((await api.getUsers()).items);
         setDiag(await api.getDiagnostics());
       }
@@ -237,12 +239,12 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
         </div>
       )}
 
-      {showCreate && <CreateUserModal teams={teams} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+      {showCreate && <CreateUserModal teams={teamOptions.length ? teamOptions : teams} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
     </div>
   );
 };
 
-const CreateUserModal: React.FC<{ teams: RescueTeam[]; onClose: () => void; onCreated: () => void }> = ({ teams, onClose, onCreated }) => {
+const CreateUserModal: React.FC<{ teams: { id: string; name: string }[]; onClose: () => void; onCreated: () => void }> = ({ teams, onClose, onCreated }) => {
   const [role, setRole] = useState<Role>('OPERATOR');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
@@ -309,7 +311,7 @@ const CreateUserModal: React.FC<{ teams: RescueTeam[]; onClose: () => void; onCr
               <select className="select-input" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
                 {teams.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} ({t.callsign})
+                    {t.name}
                   </option>
                 ))}
               </select>

@@ -109,6 +109,7 @@ export const api = {
     request<import('./types').AuthUser>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getAuditLog: (limit = 100, action?: string) =>
     request<{ items: import('./types').AuditEntry[]; count: number }>(`/auth/audit?limit=${limit}${action ? `&action=${action}` : ''}`),
+  getTeamOptions: () => request<{ items: { id: string; name: string }[] }>('/auth/team-options'),
   getDiagnostics: () => request<Record<string, any>>('/diagnostics/'),
   getMyIncidents: () => request<{ items: Incident[]; count: number }>('/incidents/mine'),
 

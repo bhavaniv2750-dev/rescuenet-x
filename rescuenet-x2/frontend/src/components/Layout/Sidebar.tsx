@@ -20,7 +20,7 @@ const ICONS: Record<Page, React.ElementType> = {
   'Emergency Alerts': Bell, 'Rescue Operations': LifeBuoy, 'My Missions': Truck,
   'Volunteer Coordination': Users, 'Facilities & Shelters': Building2, 'Incident Reports': FilePlus,
   'Report Emergency': Siren, 'My Reports': ClipboardList, 'Rescue Records': Award, 'AI Supervisor': Bot,
-  'Data & Models': Database, 'Admin Console': ShieldCheck, 'Audit Log': ScrollText, Settings, 'My Account': UserCircle,
+  'Data & Models': Database, Diagnostics: Radio, 'Admin Console': ShieldCheck, 'Audit Log': ScrollText, Settings, 'My Account': UserCircle,
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNavigate, isOpen, onClose, backendStatus, badges }) => {

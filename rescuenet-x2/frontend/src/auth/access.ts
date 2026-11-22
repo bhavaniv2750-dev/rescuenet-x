@@ -4,7 +4,7 @@ export type Page =
   | 'Home' | 'Overview' | 'Flood Digital Twin' | 'Flood Forecasting' | 'Emergency Alerts'
   | 'Rescue Operations' | 'My Missions' | 'Volunteer Coordination' | 'Facilities & Shelters'
   | 'Incident Reports' | 'Report Emergency' | 'My Reports' | 'Rescue Records' | 'AI Supervisor'
-  | 'Data & Models' | 'Admin Console' | 'Audit Log' | 'Settings' | 'My Account';
+  | 'Data & Models' | 'Diagnostics' | 'Admin Console' | 'Audit Log' | 'Settings' | 'My Account';
 
 export interface NavSection {
   title: string;
@@ -25,8 +25,18 @@ const DEPT_NAV: NavSection[] = [
 /** Sidebar layout for each role. Signed-out visitors get the public layout. */
 export function navFor(role: Role | null): NavSection[] {
   switch (role) {
+    // Administrators manage identities and the system; they hold no dispatch, triage, approval or alert rights
+    // and cannot read incident data (see backend/app/core/permissions.py). Developers get diagnostics only.
     case 'ADMIN':
-      return [...DEPT_NAV, { title: 'Administration', pages: ['Admin Console', 'Settings', 'My Account'] }];
+      return [
+        { title: 'Administration', pages: ['Admin Console', 'Audit Log', 'Diagnostics', 'Settings', 'My Account'] },
+        { title: 'Information', pages: ['Data & Models', 'Flood Forecasting', 'Emergency Alerts', 'Facilities & Shelters'] },
+      ];
+    case 'DEVELOPER':
+      return [
+        { title: 'Development', pages: ['Diagnostics', 'Data & Models'] },
+        { title: 'Account', pages: ['My Account'] },
+      ];
     case 'COMMANDER':
       return [...DEPT_NAV, { title: 'Administration', pages: ['Audit Log', 'My Account'] }];
     case 'OPERATOR':
@@ -47,14 +57,18 @@ export function navFor(role: Role | null): NavSection[] {
 }
 
 export const homePage = (role: Role | null): Page =>
-  role === 'RESCUE_OFFICER' ? 'My Missions' : role === 'ADMIN' || role === 'COMMANDER' || role === 'OPERATOR' ? 'Overview' : 'Home';
+  role === 'RESCUE_OFFICER' ? 'My Missions'
+    : role === 'ADMIN' ? 'Admin Console'
+    : role === 'DEVELOPER' ? 'Diagnostics'
+    : role === 'COMMANDER' || role === 'OPERATOR' ? 'Overview' : 'Home';
 
-export const isStaff = (role: Role | null) => role === 'ADMIN' || role === 'COMMANDER' || role === 'OPERATOR';
+export const isStaff = (role: Role | null) => role === 'COMMANDER' || role === 'OPERATOR';
 export const isDepartment = (role: Role | null) => isStaff(role) || role === 'RESCUE_OFFICER';
-export const canApprove = (role: Role | null) => role === 'ADMIN' || role === 'COMMANDER';
+export const canApprove = (role: Role | null) => role === 'COMMANDER';
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: 'Administrator',
+  DEVELOPER: 'Developer (diagnostics)',
   COMMANDER: 'Incident Commander',
   OPERATOR: 'Control Room Operator',
   RESCUE_OFFICER: 'Rescue Officer',
