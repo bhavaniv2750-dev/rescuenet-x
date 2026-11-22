@@ -15,6 +15,8 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="rescuenet_test_")
+os.environ.setdefault("RESCUENET_ENV", "development")
+os.environ.setdefault("BACKUP_DIR", str(Path(_TEST_DB_DIR) / "backups"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}")
 
 

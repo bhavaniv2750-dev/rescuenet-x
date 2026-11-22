@@ -35,6 +35,11 @@ env/
 # Databases (Local SQLite)
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 *.sqlite
 *.sqlite3
 
@@ -72,6 +77,11 @@ backend/uploads/*
 # Vision model weights (downloaded by backend/scripts/download_vision_model.py)
 backend/app/ml/artifacts/vision/*.onnx
 backend/app/ml/artifacts/vision/*.part
+
+# Database backups (contain real records; never commit)
+backend/backups/
+*.db.bak
+*.db.manifest.json
 
 # Local secrets created at first start
 backend/.jwt_secret

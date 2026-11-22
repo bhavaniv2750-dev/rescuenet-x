@@ -4,7 +4,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
 from app.db.beacon_registry import BENGALURU_HOTSPOTS
-from app.db.migrate import upgrade_schema
+from app.db.migrations import ensure_schema
 from app.db.seed_users import seed_users
 from app.models.entities import (
     Alert,
@@ -47,11 +47,7 @@ def _seed_extra_facilities(db):
 
 
 def _init_core():
-    print("[init_db] Creating all database tables...")
-    Base.metadata.create_all(bind=engine)
-    added = upgrade_schema(engine)
-    if added:
-        print(f"[init_db] Added missing columns: {', '.join(added)}")
+    ensure_schema(engine)
 
     db = SessionLocal()
     try:

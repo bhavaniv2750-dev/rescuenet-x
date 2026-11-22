@@ -5,6 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 class Settings(BaseSettings):
+    # "development" or "production". Anything else is refused at start-up. Production is the safe default:
+    # later security milestones use this flag to switch off demo accounts and development-only helpers.
+    RESCUENET_ENV: str = os.getenv("RESCUENET_ENV", "production").strip().lower()
     PROJECT_NAME: str = "Flood Digital Twin + RescueNet X 2.0"
     API_V1_STR: str = "/api"
     DEBUG: bool = True
@@ -34,6 +37,9 @@ class Settings(BaseSettings):
     # ML Models directory
     MODELS_DIR: Path = BASE_DIR / "backend" / "app" / "ml" / "artifacts"
 
+    # Where database backups are written (taken automatically before any schema migration of an existing database).
+    BACKUP_DIR: Path = Path(os.getenv("BACKUP_DIR") or str(BASE_DIR / "backend" / "backups"))
+
     # Uploads directory for incident attachments
     UPLOAD_DIR: Path = BASE_DIR / "backend" / "uploads"
 
@@ -54,4 +60,15 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @property
+    def is_production(self) -> bool:
+        return self.RESCUENET_ENV == "production"
+
+    @property
+    def is_development(self) -> bool:
+        return self.RESCUENET_ENV == "development"
+
+
 settings = Settings()
+if settings.RESCUENET_ENV not in ("development", "production"):
+    raise RuntimeError(f"RESCUENET_ENV must be 'development' or 'production', got {settings.RESCUENET_ENV!r}")

@@ -4,12 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.db.init_db import init_db
+from app.db.migrations import MigrationError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize database tables and ensure seeded data
     try:
         init_db()
+    except MigrationError:
+        raise  # never serve requests from a database whose migration failed
     except Exception as e:
         print(f"[Startup] Warning during init_db: {e}")
     yield
