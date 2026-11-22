@@ -16,14 +16,14 @@ from app.api.routes.teams import router as teams_router
 from app.api.routes.vision import router as vision_router
 from app.api.routes.volunteers import router as volunteers_router
 
-from app.api.deps import require_roles
-from app.core.security import DEPT, OPS
+from app.api.deps import require_permission
+from app.core.permissions import P
 
 api_router = APIRouter()
 
 api_router.include_router(health_router, tags=["Health"])
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
-api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[Depends(require_roles(*DEPT))])
+api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[Depends(require_permission(P.DASHBOARD_VIEW))])
 api_router.include_router(flood_router, prefix="/flood", tags=["Flood"])
 api_router.include_router(incidents_router, prefix="/incidents", tags=["Incidents"])
 api_router.include_router(media_router, prefix="/media", tags=["Evidence"])
@@ -35,5 +35,5 @@ api_router.include_router(facilities_router, prefix="/facilities", tags=["Facili
 api_router.include_router(records_router, prefix="/records", tags=["Rescue Records"])
 api_router.include_router(agents_router, prefix="/agents", tags=["AI Agents"])
 api_router.include_router(datasets_router, prefix="/datasets", tags=["Datasets"])
-api_router.include_router(vision_router, prefix="/vision", tags=["Vision"], dependencies=[Depends(require_roles(*DEPT))])
+api_router.include_router(vision_router, prefix="/vision", tags=["Vision"], dependencies=[Depends(require_permission(P.VISION_ANALYZE))])
 api_router.include_router(diagnostics_router, prefix="/diagnostics", tags=["Diagnostics"])

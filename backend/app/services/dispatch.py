@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
+from app.core.permissions import P, role_has
 from app.models.entities import Incident, RescueTeam
 from app.services import incident_lifecycle as lifecycle
 from app.services.audit import record_audit
@@ -53,6 +54,13 @@ def dispatch_incident_to_team(
     note: Optional[str] = None,
     commander_approved: bool = False,
 ) -> RescueTeam:
+    # Service-level authorization, independent of the route that called us: dispatching needs dispatch.assign, and
+    # claiming commander approval needs dispatch.approve. The AI supervisor ("AGENT") holds neither.
+    if not role_has(role, P.DISPATCH_ASSIGN):
+        raise HTTPException(status_code=403, detail=f"Role {role} is not allowed to dispatch a team.")
+    if commander_approved and not role_has(role, P.DISPATCH_APPROVE):
+        raise HTTPException(status_code=403, detail=f"Role {role} cannot give commander approval.")
+
     team = db.query(RescueTeam).filter(RescueTeam.id == team_id).first()
     if team is None:
         raise HTTPException(status_code=404, detail=f"Rescue team {team_id} not found")

@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.deps import actor_name, require_roles
-from app.core.security import APPROVERS, DEPT, OPS
+from app.api.deps import actor_name, actor_role, require_permission
+from app.core.permissions import P
 from app.db.session import get_db
 from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask, User
 from app.schemas.domain import SupervisorTaskDecision, SupervisorTaskOut, SupervisorTaskRequest
@@ -63,7 +63,7 @@ AGENTS_ROSTER = [
 ]
 
 
-@router.get("/", dependencies=[Depends(require_roles(*DEPT))])
+@router.get("/", dependencies=[Depends(require_permission(P.SUPERVISOR_VIEW))])
 def list_agents():
     health = ollama_supervisor_service.check_health()
     return {
@@ -82,13 +82,13 @@ def list_agents():
     }
 
 
-@router.get("/supervisor/health", dependencies=[Depends(require_roles(*DEPT))])
+@router.get("/supervisor/health", dependencies=[Depends(require_permission(P.SUPERVISOR_VIEW))])
 def get_supervisor_health():
     """Check connectivity and model availability of local Ollama server."""
     return ollama_supervisor_service.check_health()
 
 
-@router.get("/tasks", dependencies=[Depends(require_roles(*OPS))])
+@router.get("/tasks", dependencies=[Depends(require_permission(P.SUPERVISOR_VIEW))])
 def list_supervisor_tasks(db: Session = Depends(get_db)):
     tasks = db.query(SupervisorTask).order_by(SupervisorTask.created_at.desc()).all()
     return {
@@ -97,7 +97,7 @@ def list_supervisor_tasks(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
+@router.post("/supervisor/triage", response_model=SupervisorTaskOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(P.TRIAGE_RUN))])
 async def execute_supervisor_triage(payload: SupervisorTaskRequest, db: Session = Depends(get_db)):
     # 1. Fetch incident or handle prospective / no-incident context
     incident = None
@@ -217,7 +217,7 @@ def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
 
 @router.post("/tasks/{task_id}/approve", response_model=SupervisorTaskOut)
 def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
-                            user: User = Depends(require_roles(*APPROVERS))):
+                            user: User = Depends(require_permission(P.DISPATCH_APPROVE))):
     """Commander approves the plan. The linked incident is dispatched only if the suggested team can really be
     sent: it must still be AVAILABLE and is claimed atomically. Otherwise nothing changes and the approval is refused."""
     payload = _decider(payload, user)
@@ -233,7 +233,7 @@ def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = Supe
                            "Decline it, or run triage again when a team is available.",
                 )
             dispatch_incident_to_team(
-                db, incident, task.suggested_team_id, actor=payload.commander, role="COMMANDER",
+                db, incident, task.suggested_team_id, actor=payload.commander, role=actor_role(user),
                 note=f"approved {task.id}", commander_approved=True,
             )
         except HTTPException as exc:
@@ -256,7 +256,7 @@ def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = Supe
 
 @router.post("/tasks/{task_id}/decline", response_model=SupervisorTaskOut)
 def decline_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
-                            user: User = Depends(require_roles(*APPROVERS))):
+                            user: User = Depends(require_permission(P.DISPATCH_APPROVE))):
     """Commander declines the plan. The linked incident goes to REJECTED and can be re-queued."""
     payload = _decider(payload, user)
     task = _get_pending_task(db, task_id)
@@ -270,7 +270,7 @@ def decline_supervisor_task(task_id: str, payload: SupervisorTaskDecision = Supe
     if task.incident_id:
         incident = db.query(Incident).filter(Incident.id == task.incident_id).first()
         if incident and lifecycle.normalize(incident.status) == "PENDING_APPROVAL":
-            lifecycle.transition(db, incident, "REJECTED", actor=payload.commander, role="COMMANDER", note=f"declined {task.id}")
+            lifecycle.transition(db, incident, "REJECTED", actor=payload.commander, role=actor_role(user), note=f"declined {task.id}")
 
     db.commit()
     db.refresh(task)

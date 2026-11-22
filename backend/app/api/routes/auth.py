@@ -15,7 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.deps import actor_name, get_current_user, require_roles, utcnow_naive
+from app.api.deps import actor_name, get_current_user, require_permission, utcnow_naive
+from app.core.permissions import P, permissions_for_role
 from app.core.security import (
     PORTALS,
     ROLE_PORTAL,
@@ -68,6 +69,7 @@ class UserOut(BaseModel):
     volunteer_id: Optional[str] = None
     volunteer_verified: Optional[bool] = None
     is_active: bool
+    permissions: List[str] = []   # what this role may do (informational; the API enforces it on every call)
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -78,7 +80,7 @@ class TokenOut(BaseModel):
 
 
 class UserCreate(BaseModel):
-    role: Literal["ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]
+    role: Literal["ADMIN", "DEVELOPER", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]
     username: str = Field(pattern=USERNAME_PATTERN)
     full_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=8, max_length=200)
@@ -89,7 +91,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    role: Optional[Literal["ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]] = None
+    role: Optional[Literal["ADMIN", "DEVELOPER", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]] = None
     team_id: Optional[str] = None
     is_active: Optional[bool] = None
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=200)
@@ -115,6 +117,7 @@ class AuditEntryOut(BaseModel):
 def user_out(db: Session, user: User) -> UserOut:
     out = UserOut.model_validate(user)
     out.portal = ROLE_PORTAL.get(user.role, "")
+    out.permissions = sorted(permissions_for_role(user.role))
     if user.volunteer_id:
         vol = db.query(Volunteer).filter(Volunteer.id == user.volunteer_id).first()
         out.volunteer_verified = bool(vol and vol.is_verified)
@@ -130,7 +133,8 @@ def _check_password(pw: str) -> None:
 # ---------- public endpoints ----------
 @router.get("/portals")
 def list_portals():
-    demo = settings.SEED_DEMO_USERS
+    # Demo credentials are a development-only convenience: never offered unless RESCUENET_ENV=development.
+    demo = settings.SEED_DEMO_USERS and settings.is_development
     return {
         "demo_mode": demo,
         # Shown on the sign-in page only while demo accounts are enabled (development / project demo).
@@ -140,6 +144,7 @@ def list_portals():
                 ("citizen", "Citizen", "CITIZEN"), ("volunteer", "Volunteer", "VOLUNTEER"),
                 ("operator", "Control room operator", "OPERATOR"), ("officer", "Rescue officer", "RESCUE_OFFICER"),
                 ("commander", "Incident commander", "COMMANDER"), ("admin", "Administrator", "ADMIN"),
+                ("developer", "Developer (diagnostics only)", "DEVELOPER"),
             ]
         ] if demo else [],
         "demo_password": settings.DEMO_USER_PASSWORD if demo else None,
@@ -231,7 +236,7 @@ def change_password(payload: PasswordChange, user: User = Depends(get_current_us
 
 # ---------- administration ----------
 @router.get("/users", response_model=dict)
-def list_users(role: Optional[str] = Query(None), admin: User = Depends(require_roles("ADMIN")), db: Session = Depends(get_db)):
+def list_users(role: Optional[str] = Query(None), admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
     q = db.query(User)
     if role:
         q = q.filter(User.role == role.upper())
@@ -239,8 +244,16 @@ def list_users(role: Optional[str] = Query(None), admin: User = Depends(require_
     return {"items": [user_out(db, u) for u in users], "count": len(users), "roles": ROLES}
 
 
+@router.get("/team-options", response_model=dict)
+def team_options(admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
+    """Just id and name of each squad, so an administrator can attach a rescue officer account to a team without
+    being able to see squad locations, status or missions (team.view is an operations permission)."""
+    teams = db.query(RescueTeam.id, RescueTeam.name).order_by(RescueTeam.name).all()
+    return {"items": [{"id": t.id, "name": t.name} for t in teams]}
+
+
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(payload: UserCreate, admin: User = Depends(require_roles("ADMIN")), db: Session = Depends(get_db)):
+def create_user(payload: UserCreate, admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
     _check_password(payload.password)
     username = payload.username.lower()
     if db.query(User).filter(User.username == username).first():
@@ -259,7 +272,7 @@ def create_user(payload: UserCreate, admin: User = Depends(require_roles("ADMIN"
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
-def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require_roles("ADMIN")), db: Session = Depends(get_db)):
+def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -278,6 +291,7 @@ def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require
         user.password_hash = hash_password(payload.new_password)
         user.failed_logins, user.locked_until = 0, None
         changes.append("password reset")
+        record_audit(db, actor_name(admin), "USER_PASSWORD_RESET_BY_ADMIN", "user", user.id, user.username, role="ADMIN")
     record_audit(db, actor_name(admin), "USER_UPDATED", "user", user.id, ", ".join(changes) or "no change", role="ADMIN")
     db.commit()
     db.refresh(user)
@@ -290,7 +304,7 @@ def audit_log(
     offset: int = Query(0, ge=0),
     action: Optional[str] = Query(None),
     actor: Optional[str] = Query(None),
-    admin: User = Depends(require_roles("ADMIN", "COMMANDER")),
+    admin: User = Depends(require_permission(P.AUDIT_READ)),
     db: Session = Depends(get_db),
 ):
     q = db.query(AuditLog)

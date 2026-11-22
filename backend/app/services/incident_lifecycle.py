@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.permissions import P, role_has
 from app.models.entities import Incident, RescueTeam, Volunteer
 from app.services.audit import record_audit
 
@@ -125,6 +126,12 @@ def transition(
             detail=f"Transition {current} -> {target} is not allowed. Allowed: {', '.join(TRANSITIONS.get(current, [])) or 'none (terminal state)'}",
         )
     if target == "DISPATCHED":
+        # Service-level authorization: whatever the caller, only a role holding dispatch.assign may dispatch (the
+        # supervisor agent and system roles never do), and only dispatch.approve may claim commander approval.
+        if not role_has(role, P.DISPATCH_ASSIGN):
+            raise HTTPException(status_code=403, detail=f"Role {role} is not allowed to dispatch.")
+        if approved_by_commander and not role_has(role, P.DISPATCH_APPROVE):
+            raise HTTPException(status_code=403, detail=f"Role {role} cannot give commander approval.")
         if incident_requires_approval(incident) and not approved_by_commander:
             raise HTTPException(
                 status_code=409,

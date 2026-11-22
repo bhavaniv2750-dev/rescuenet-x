@@ -2,8 +2,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from app.api.deps import actor_name, actor_role, require_roles
-from app.core.security import APPROVERS, DEPT, OPS
+from app.api.deps import actor_name, actor_role, ensure_permission, require_permission
+from app.core.permissions import P
 from app.db.session import get_db
 from app.models.entities import Incident, RescueTeam, User
 from app.schemas.domain import RescueTeamCreate, RescueTeamOut
@@ -19,7 +19,7 @@ class TeamStatusUpdate(BaseModel):
 class TeamAssignRequest(BaseModel):
     incident_id: str
 
-@router.get("/", response_model=dict, dependencies=[Depends(require_roles(*DEPT))])
+@router.get("/", response_model=dict, dependencies=[Depends(require_permission(P.TEAM_VIEW))])
 def list_teams(status_filter: Optional[str] = Query(None, alias="status"), db: Session = Depends(get_db)):
     query = db.query(RescueTeam)
     if isinstance(status_filter, str) and status_filter.strip():
@@ -32,7 +32,7 @@ def list_teams(status_filter: Optional[str] = Query(None, alias="status"), db: S
         "deployed_count": sum(1 for t in teams if t.status == "DEPLOYED"),
     }
 
-@router.post("/", response_model=RescueTeamOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
+@router.post("/", response_model=RescueTeamOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(P.TEAM_MANAGE))])
 def create_team(payload: RescueTeamCreate, db: Session = Depends(get_db)):
     count = db.query(RescueTeam).count()
     new_id = f"TEAM-{payload.callsign.upper()}-{count + 1}"
@@ -55,7 +55,7 @@ def create_team(payload: RescueTeamCreate, db: Session = Depends(get_db)):
     db.refresh(team)
     return RescueTeamOut.model_validate(team)
 
-@router.patch("/{team_id}/status", response_model=RescueTeamOut, dependencies=[Depends(require_roles(*OPS))])
+@router.patch("/{team_id}/status", response_model=RescueTeamOut, dependencies=[Depends(require_permission(P.TEAM_MANAGE))])
 def update_team_status(team_id: str, payload: TeamStatusUpdate, db: Session = Depends(get_db)):
     team = db.query(RescueTeam).filter(RescueTeam.id == team_id).first()
     if not team:
@@ -80,7 +80,7 @@ def update_team_status(team_id: str, payload: TeamStatusUpdate, db: Session = De
 
 @router.post("/{team_id}/assign")
 def assign_team_to_incident(team_id: str, payload: TeamAssignRequest, db: Session = Depends(get_db),
-                            user: User = Depends(require_roles(*OPS))):
+                            user: User = Depends(require_permission(P.DISPATCH_ASSIGN))):
     team = db.query(RescueTeam).filter(RescueTeam.id == team_id).first()
     if not team:
         raise HTTPException(status_code=404, detail=f"Rescue team {team_id} not found")

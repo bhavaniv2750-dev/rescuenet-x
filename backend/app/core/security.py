@@ -15,19 +15,19 @@ from app.core.config import BASE_DIR, settings
 PBKDF2_ITERATIONS = 240_000
 ALGORITHM = "HS256"
 
-ROLES = ["ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]
+ROLES = ["ADMIN", "DEVELOPER", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"]
 # Which login portal each role signs in through.
 PORTALS: Dict[str, list] = {
-    "admin": ["ADMIN"],
+    "admin": ["ADMIN", "DEVELOPER"],
     "operations": ["COMMANDER", "OPERATOR", "RESCUE_OFFICER"],
     "public": ["CITIZEN", "VOLUNTEER"],
 }
 ROLE_PORTAL = {role: portal for portal, roles in PORTALS.items() for role in roles}
 
-# Permission groups used by the routes.
-OPS = ("ADMIN", "COMMANDER", "OPERATOR")
+# Role groups kept ONLY for the legacy require_roles() helper. Authorization uses app.core.permissions.
+OPS = ("COMMANDER", "OPERATOR")
 DEPT = OPS + ("RESCUE_OFFICER",)
-APPROVERS = ("ADMIN", "COMMANDER")
+APPROVERS = ("COMMANDER",)
 
 MIN_PASSWORD_LENGTH = 8
 

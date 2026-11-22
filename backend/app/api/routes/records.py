@@ -1,18 +1,18 @@
 import csv
 import io
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.api.deps import actor_name, require_roles
-from app.core.security import APPROVERS, DEPT, OPS
+from app.api.deps import actor_name, require_permission
+from app.core.permissions import P, role_has
 from app.db.session import get_db
-from app.models.entities import RescueRecord
+from app.models.entities import Incident, RescueRecord, User
 from app.schemas.domain import RescueRecordCreate, RescueRecordOut
 
 router = APIRouter()
 
-@router.get("/export/csv", dependencies=[Depends(require_roles(*DEPT))])
+@router.get("/export/csv", dependencies=[Depends(require_permission(P.RECORD_EXPORT))])
 def export_records_csv(db: Session = Depends(get_db)):
     records = db.query(RescueRecord).order_by(RescueRecord.completed_at.desc()).all()
     
@@ -63,16 +63,25 @@ def export_records_csv(db: Session = Depends(get_db)):
         },
     )
 
-@router.get("/", response_model=dict, dependencies=[Depends(require_roles(*DEPT))])
-def list_records(db: Session = Depends(get_db)):
-    records = db.query(RescueRecord).order_by(RescueRecord.completed_at.desc()).all()
+def _own_team_only(user: User) -> bool:
+    """Field officers see and file records for their own team only; everyone else with record.view sees all."""
+    return not role_has(user.role, P.INCIDENT_VIEW_ALL)
+
+
+@router.get("/", response_model=dict)
+def list_records(db: Session = Depends(get_db), user: User = Depends(require_permission(P.RECORD_VIEW))):
+    q = db.query(RescueRecord)
+    if _own_team_only(user):
+        q = q.filter(RescueRecord.team_id == (user.team_id or "__no_team__"))
+    records = q.order_by(RescueRecord.completed_at.desc()).all()
     return {
         "items": [RescueRecordOut.model_validate(r) for r in records],
         "count": len(records),
     }
 
-@router.get("/summary", dependencies=[Depends(require_roles(*DEPT))])
-def get_records_summary(db: Session = Depends(get_db)):
+@router.get("/summary")
+def get_records_summary(db: Session = Depends(get_db), user: User = Depends(require_permission(P.RECORD_VIEW))):
+    scope = [RescueRecord.team_id == (user.team_id or "__no_team__")] if _own_team_only(user) else []
     totals = db.query(
         func.sum(RescueRecord.people_rescued).label("rescued"),
         func.sum(RescueRecord.survivors).label("survivors"),
@@ -80,10 +89,10 @@ def get_records_summary(db: Session = Depends(get_db)):
         func.sum(RescueRecord.deceased).label("deceased"),
         func.sum(RescueRecord.severe_injuries).label("severe_injuries"),
         func.sum(RescueRecord.minor_injuries).label("minor_injuries"),
-    ).first()
+    ).filter(*scope).first()
 
     return {
-        "total_missions": db.query(RescueRecord).count(),
+        "total_missions": db.query(RescueRecord).filter(*scope).count(),
         "total_rescued": int(totals.rescued or 0),
         "total_survivors": int(totals.survivors or 0),
         "total_missing": int(totals.missing or 0),
@@ -92,8 +101,13 @@ def get_records_summary(db: Session = Depends(get_db)):
         "total_minor_injuries": int(totals.minor_injuries or 0),
     }
 
-@router.post("/", response_model=RescueRecordOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*DEPT))])
-def create_record(payload: RescueRecordCreate, db: Session = Depends(get_db)):
+@router.post("/", response_model=RescueRecordOut, status_code=status.HTTP_201_CREATED)
+def create_record(payload: RescueRecordCreate, db: Session = Depends(get_db), user: User = Depends(require_permission(P.RECORD_CREATE))):
+    if _own_team_only(user):
+        # A field officer files records only for their own team and only for a mission assigned to that team.
+        inc = db.query(Incident).filter(Incident.id == payload.incident_id).first() if payload.incident_id else None
+        if not user.team_id or payload.team_id != user.team_id or inc is None or inc.assigned_team_id != user.team_id:
+            raise HTTPException(status_code=403, detail="You can file records only for missions assigned to your own team.")
     count = db.query(RescueRecord).count()
     new_id = f"REC-2026-{count + 3:03d}"
 

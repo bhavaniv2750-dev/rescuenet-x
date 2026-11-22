@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_roles
+from app.api.deps import require_permission
+from app.core.permissions import P
 from app.core.config import settings
 from app.core.security import verify_password
 from app.db.session import get_db
@@ -29,7 +30,7 @@ def _dir_size_mb(path) -> float:
     return round(total / 1e6, 2)
 
 
-@router.get("/", dependencies=[Depends(require_roles("ADMIN"))])
+@router.get("/", dependencies=[Depends(require_permission(P.SYSTEM_DIAGNOSTICS))])
 def diagnostics(db: Session = Depends(get_db)) -> Dict[str, Any]:
     from app.ml.flood_model import flood_ml_service
     from app.services.ollama_service import ollama_supervisor_service
@@ -75,7 +76,8 @@ def diagnostics(db: Session = Depends(get_db)) -> Dict[str, Any]:
         warnings.append("Flood photo models are not installed: run python scripts/download_vision_model.py.")
 
     return {
-        "runtime": {"python": sys.version.split()[0], "platform": platform.platform(), "debug": settings.DEBUG},
+        "runtime": {"python": sys.version.split()[0], "platform": platform.platform(), "debug": settings.DEBUG,
+            "environment": settings.RESCUENET_ENV},
         "database": {"url_kind": settings.DATABASE_URL.split(":")[0], "tables": tables, "incidents_by_data_label": by_label},
         "flood_model": {
             "loaded": flood_ml_service.model is not None,

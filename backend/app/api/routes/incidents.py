@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import re
@@ -9,9 +10,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from app.api.deps import actor_name, actor_role, get_optional_user, require_roles
+from app.api.deps import actor_name, actor_role, ensure_permission, get_optional_user, require_permission
 from app.core.config import settings
-from app.core.security import APPROVERS, DEPT, OPS
+from app.core.permissions import P, has_permission, role_has
 from app.models.entities import User
 from fastapi import Header
 from app.db.session import get_db
@@ -63,16 +64,16 @@ async def upload_incident_image(request: Request, file: UploadFile = File(...), 
     }
 
 
-def _can_view_incident_evidence(inc: Incident, user: Optional[User]) -> bool:
+def _can_access_incident(inc: Incident, user: Optional[User]) -> bool:
+    """Incident details: everything for incident.view_all; only the own team's missions for incident.view_assigned;
+    only the user's own reports for incident.view_own."""
     if user is None:
         return False
-    if user.role in media.STAFF_ROLES:
+    if has_permission(user, P.INCIDENT_VIEW_ALL):
         return True
-    if user.role == "RESCUE_OFFICER":
-        return bool(user.team_id) and inc.assigned_team_id == user.team_id
-    if user.role in ("CITIZEN", "VOLUNTEER"):
-        return inc.reporter_user_id == user.id
-    return False
+    if has_permission(user, P.INCIDENT_VIEW_ASSIGNED) and user.team_id and inc.assigned_team_id == user.team_id:
+        return True
+    return has_permission(user, P.INCIDENT_VIEW_OWN) and inc.reporter_user_id == user.id
 
 
 @router.get("/uploads/{filename}")
@@ -84,7 +85,7 @@ def get_legacy_incident_image(filename: str, db: Session = Depends(get_db),
     clean_name = os.path.basename(filename)
     inc = media.asset_for_legacy_filename(db, clean_name)
     file_path = settings.UPLOAD_DIR / clean_name
-    if inc is None or not _can_view_incident_evidence(inc, user) or not file_path.is_file():
+    if inc is None or not media.can_view_incident_evidence(inc, user) or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(file_path, headers=media.PRIVATE_HEADERS)
 
@@ -117,8 +118,8 @@ def _apply_risk_edit(db: Session, inc: Incident, payload: IncidentStatusUpdate, 
     """Edits to severity or people_affected, with the safety rules for lowering them.
 
     * Raising the risk is allowed for operations staff and is audited.
-    * Lowering the risk of an incident that needs commander approval is allowed only for a commander or
-      administrator, with a written reason; it is audited. Refused attempts are audited too.
+    * Lowering the risk of an incident that needs commander approval is allowed only for a commander
+      (permission incident.reduce_risk), with a written reason; it is audited. Refused attempts are audited too.
     * The original assessment (reported_severity / reported_people_affected) is never changed.
     """
     if payload.severity is None and payload.people_affected is None:
@@ -134,9 +135,9 @@ def _apply_risk_edit(db: Session, inc: Incident, payload: IncidentStatusUpdate, 
     lowers = lifecycle.severity_rank(new_sev) < lifecycle.severity_rank(old_sev) or new_people < old_people
 
     if lowers and lifecycle.incident_requires_approval(inc):
-        if role not in APPROVERS:
+        if not role_has(role, P.INCIDENT_REDUCE_RISK):
             record_audit(db, actor, "INCIDENT_RISK_DOWNGRADE_DENIED", "incident", inc.id,
-                         f"{detail} | refused: only a commander or administrator may lower the risk of an incident that needs approval", role=role)
+                         f"{detail} | refused: only a commander may lower the risk of an incident that needs approval", role=role)
             db.commit()
             raise HTTPException(
                 status_code=403,
@@ -165,7 +166,7 @@ def get_lifecycle():
 
 
 @router.get("/beacons", response_model=dict)
-def list_beacons(db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
+def list_beacons(db: Session = Depends(get_db), _: User = Depends(require_permission(P.BEACON_VIEW))):
     beacons = db.query(Beacon).order_by(Beacon.beacon_id).all()
     return {
         "items": [BeaconOut.model_validate(b) for b in beacons],
@@ -182,7 +183,10 @@ def ingest_lora_packet(packet: LoRaPacket, db: Session = Depends(get_db), x_gate
     packets must carry it in the X-Gateway-Key header.
     """
     expected = settings.LORA_GATEWAY_KEY
-    if expected and x_gateway_key != expected:
+    if settings.is_production and not expected:
+        # Secure by default: an unauthenticated device endpoint is a development convenience only.
+        raise HTTPException(status_code=503, detail="LoRa intake is disabled until LORA_GATEWAY_KEY is configured.")
+    if expected and not hmac.compare_digest(x_gateway_key or "", expected):
         raise HTTPException(status_code=401, detail="Missing or wrong gateway key")
     rms = None
     if packet.latitude is not None and packet.longitude is not None:
@@ -267,13 +271,13 @@ def change_incident_state(
     incident_id: str,
     payload: IncidentStateChange,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(*DEPT)),
+    user: User = Depends(require_permission(P.INCIDENT_VERIFY, P.INCIDENT_PROGRESS)),
 ):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     target = lifecycle.normalize(payload.to_status)
-    if getattr(user, "role", None) == "RESCUE_OFFICER":
+    if not has_permission(user, P.INCIDENT_VERIFY):
         # Field officers only report progress on missions given to their own team.
         if not inc.assigned_team_id or inc.assigned_team_id != user.team_id:
             raise HTTPException(status_code=403, detail="This incident is not assigned to your team")
@@ -293,7 +297,11 @@ def change_incident_state(
 
 
 @router.get("/{incident_id}/history", response_model=dict)
-def get_incident_history(incident_id: str, db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
+def get_incident_history(incident_id: str, db: Session = Depends(get_db),
+                         user: User = Depends(require_permission(P.INCIDENT_VIEW_ALL, P.INCIDENT_VIEW_ASSIGNED))):
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if (inc is None and not has_permission(user, P.INCIDENT_VIEW_ALL)) or (inc is not None and not _can_access_incident(inc, user)):
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     entries = (
         db.query(AuditLog)
         .filter(AuditLog.target_type == "incident", AuditLog.target_id == incident_id)
@@ -306,7 +314,7 @@ def get_incident_history(incident_id: str, db: Session = Depends(get_db), _: Use
 @router.get("/", response_model=dict)
 def list_incidents(
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*DEPT)),
+    user: User = Depends(require_permission(P.INCIDENT_VIEW_ALL, P.INCIDENT_VIEW_ASSIGNED)),
     status_filter: Optional[str] = Query(None, alias="status"),
     severity: Optional[str] = None,
     search: Optional[str] = None,
@@ -314,6 +322,8 @@ def list_incidents(
     offset: int = 0,
 ):
     query = db.query(Incident)
+    if not has_permission(user, P.INCIDENT_VIEW_ALL):  # field officers: their own team's missions only
+        query = query.filter(Incident.assigned_team_id == (user.team_id or "__no_team__"))
 
     if isinstance(status_filter, str) and status_filter.strip():
         query = query.filter(Incident.status.ilike(f"%{status_filter}%"))
@@ -342,12 +352,12 @@ def list_incidents(
     }
 
 @router.get("/mine", response_model=dict)
-def my_incidents(db: Session = Depends(get_db), user: User = Depends(require_roles(
-        "ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"))):
+def my_incidents(db: Session = Depends(get_db), user: User = Depends(require_permission(
+        P.INCIDENT_VIEW_OWN, P.INCIDENT_VIEW_ASSIGNED))):
     """Reports filed by the signed-in user, or, for a rescue officer, their team's missions."""
     q = db.query(Incident)
-    if user.role == "RESCUE_OFFICER":
-        q = q.filter(Incident.assigned_team_id == user.team_id)
+    if has_permission(user, P.INCIDENT_VIEW_ASSIGNED):
+        q = q.filter(Incident.assigned_team_id == (user.team_id or "__no_team__"))
     else:
         q = q.filter(Incident.reporter_user_id == user.id)
     items = q.order_by(Incident.created_at.desc()).limit(200).all()
@@ -437,12 +447,14 @@ def create_incident(payload: IncidentCreate, request: Request = None, db: Sessio
     return out
 
 @router.post("/{incident_id}/analyze-photo", response_model=IncidentOut)
-def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), _: User = Depends(require_roles(*DEPT))):
+def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission(P.EVIDENCE_ANALYZE))):
     """Run the flood-photo models on the incident's uploaded photo and store the summary."""
     from app.services.vision_service import VisionModelUnavailable, flood_vision_service
 
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
+        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    if not media.can_view_incident_evidence(inc, user):  # an officer may analyse only their own team's evidence
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     aid = media.asset_id_from_url(inc.image_url)
     legacy = media.LEGACY_URL_PREFIX
@@ -472,21 +484,25 @@ def analyze_incident_photo(incident_id: str, db: Session = Depends(get_db), _: U
 
 
 @router.get("/{incident_id}", response_model=IncidentOut)
-def get_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(
-        "ADMIN", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUNTEER", "CITIZEN"))):
+def get_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission(
+        P.INCIDENT_VIEW_ALL, P.INCIDENT_VIEW_ASSIGNED, P.INCIDENT_VIEW_OWN))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
-    if getattr(user, "role", "ADMIN") in ("CITIZEN", "VOLUNTEER") and inc.reporter_user_id != user.id:
+    if not _can_access_incident(inc, user):
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     return IncidentOut.model_validate(inc)
 
 @router.patch("/{incident_id}", response_model=IncidentOut)
 def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session = Depends(get_db),
-                    user: User = Depends(require_roles(*OPS))):
+                    user: User = Depends(require_permission(P.INCIDENT_VERIFY, P.INCIDENT_EDIT_RISK))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    if payload.status is not None:
+        ensure_permission(user, P.INCIDENT_VERIFY)
+    if payload.severity is not None or payload.people_affected is not None:
+        ensure_permission(user, P.INCIDENT_EDIT_RISK)
 
     if payload.assigned_team_id is not None:
         raise HTTPException(
@@ -505,7 +521,7 @@ def update_incident(incident_id: str, payload: IncidentStatusUpdate, db: Session
     return IncidentOut.model_validate(inc)
 
 @router.delete("/{incident_id}", status_code=status.HTTP_200_OK)
-def delete_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles("ADMIN"))):
+def delete_incident(incident_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission(P.INCIDENT_DELETE))):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")

@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core import permissions as perms
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.entities import User
@@ -48,7 +49,23 @@ def get_optional_user(
     return _user_from_token(creds, db)
 
 
+def require_permission(*needed: str) -> Callable[..., User]:
+    """Route guard: the signed-in user's CURRENT role (read from the database on every request, never from the token)
+    must hold at least one of the listed permissions. Role changes and deactivation therefore apply immediately."""
+    wanted = frozenset(needed)
+
+    def checker(user: User = Depends(get_current_user)) -> User:
+        if not (perms.user_permissions(user) & wanted):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail=f"Your role ({user.role}) does not have permission for this action.")
+        return user
+
+    checker.permissions = wanted  # introspected by the policy tests
+    return checker
+
+
 def require_roles(*roles: str) -> Callable[..., User]:
+    """Legacy role-name guard, kept only for compatibility. New code uses require_permission."""
     allowed = set(roles)
 
     def checker(user: User = Depends(get_current_user)) -> User:
@@ -60,6 +77,13 @@ def require_roles(*roles: str) -> Callable[..., User]:
         return user
 
     return checker
+
+
+def ensure_permission(user: Any, permission: str) -> None:
+    """In-handler / service-level check for rules that depend on the resource (turns PermissionDenied into 403)."""
+    if not perms.has_permission(user, permission):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Your role ({getattr(user, 'role', 'guest')}) does not have permission for this action.")
 
 
 def actor_name(user: Any, default: str = "system") -> str:

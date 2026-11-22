@@ -2,8 +2,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.api.deps import actor_name, actor_role, require_roles
-from app.core.security import APPROVERS, DEPT, OPS
+from app.api.deps import actor_name, actor_role, require_permission
+from app.core.permissions import P
 from app.db.session import get_db
 from app.models.entities import Incident, User, Volunteer
 from app.services import incident_lifecycle as lifecycle
@@ -17,7 +17,7 @@ class VolunteerStatusUpdate(BaseModel):
     status: Optional[str] = None
     is_verified: Optional[bool] = None
 
-@router.get("/", response_model=dict, dependencies=[Depends(require_roles(*OPS))])
+@router.get("/", response_model=dict, dependencies=[Depends(require_permission(P.VOLUNTEER_VIEW))])
 def list_volunteers(
     verified_only: Optional[bool] = Query(None, alias="verified"),
     skill: Optional[str] = None,
@@ -36,7 +36,7 @@ def list_volunteers(
         "verified_count": sum(1 for v in items if v.is_verified),
     }
 
-@router.post("/", response_model=VolunteerOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
+@router.post("/", response_model=VolunteerOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(P.VOLUNTEER_MANAGE))])
 def register_volunteer(payload: VolunteerCreate, db: Session = Depends(get_db)):
     new_id = next_volunteer_id(db)
 
@@ -64,7 +64,7 @@ ACTIVE_RESCUE_STATES = ("DISPATCHED", "IN_TRANSIT", "ON_SCENE")
 
 @router.patch("/{volunteer_id}", response_model=VolunteerOut)
 def update_volunteer(volunteer_id: str, payload: VolunteerStatusUpdate, db: Session = Depends(get_db),
-                     user: User = Depends(require_roles(*OPS))):
+                     user: User = Depends(require_permission(P.VOLUNTEER_VERIFY))):
     vol = db.query(Volunteer).filter(Volunteer.id == volunteer_id).first()
     if not vol:
         raise HTTPException(status_code=404, detail=f"Volunteer {volunteer_id} not found")
@@ -91,7 +91,7 @@ def update_volunteer(volunteer_id: str, payload: VolunteerStatusUpdate, db: Sess
 
 @router.post("/{volunteer_id}/assign", response_model=VolunteerOut)
 def assign_volunteer(volunteer_id: str, payload: VolunteerAssign, db: Session = Depends(get_db),
-                     user: User = Depends(require_roles(*OPS))):
+                     user: User = Depends(require_permission(P.VOLUNTEER_MANAGE))):
     """Send a volunteer to an active rescue. Only verified, available volunteers can be assigned."""
     vol = db.query(Volunteer).filter(Volunteer.id == volunteer_id).first()
     if not vol:
@@ -116,7 +116,7 @@ def assign_volunteer(volunteer_id: str, payload: VolunteerAssign, db: Session = 
 
 
 @router.post("/{volunteer_id}/release", response_model=VolunteerOut)
-def release_volunteer(volunteer_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(*OPS))):
+def release_volunteer(volunteer_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission(P.VOLUNTEER_MANAGE))):
     vol = db.query(Volunteer).filter(Volunteer.id == volunteer_id).first()
     if not vol:
         raise HTTPException(status_code=404, detail=f"Volunteer {volunteer_id} not found")

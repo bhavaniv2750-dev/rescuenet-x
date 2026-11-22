@@ -69,7 +69,7 @@ def pytest_configure(config):
 
 def sign_in(client, username: str = "commander", portal: str = None):
     """Log a demo account in and set its token on the client. Returns the client."""
-    portals = {"admin": "admin", "commander": "operations", "operator": "operations",
+    portals = {"admin": "admin", "developer": "admin", "commander": "operations", "operator": "operations",
                "officer": "operations", "volunteer": "public", "citizen": "public"}
     r = client.post("/api/auth/login", json={
         "portal": portal or portals[username], "username": username, "password": "Rescue@2026"})

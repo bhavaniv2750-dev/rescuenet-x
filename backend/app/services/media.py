@@ -28,7 +28,7 @@ from app.models.entities import Incident, MediaAsset, User
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}   # animated GIFs and everything else are refused
 MEDIA_URL_PREFIX = "/api/media/"
 LEGACY_URL_PREFIX = "/api/incidents/uploads/"
-STAFF_ROLES = {"ADMIN", "COMMANDER", "OPERATOR"}
+from app.core.permissions import P, has_permission
 PRIVATE_HEADERS = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
                    "Content-Disposition": 'inline; filename="evidence.jpg"'}
 
@@ -181,29 +181,32 @@ def attach_to_incident(db: Session, image_urls: list[str], incident: Incident, u
     return attached
 
 
-def can_view(db: Session, asset: MediaAsset, user: Optional[User]) -> bool:
-    """Who may see an evidence photo.
+def can_view_incident_evidence(inc: Incident, user: Optional[User]) -> bool:
+    """Who may see the evidence photos of an incident (permission-based, see app.core.permissions).
 
-    * staff (admin, commander, operator): any attached photo
-    * rescue officer: only photos of incidents assigned to their own team
-    * citizen/volunteer: only photos of their own reports
-    * the signed-in uploader: their own photo before it is attached
-    * everyone else, including anonymous callers: no
+    * evidence.view_all (commander, operator): every incident
+    * evidence.view_assigned (rescue officer): only incidents assigned to the officer's own team
+    * evidence.view_own (citizen, volunteer): only their own reports
+    * administrators and developers hold none of these
+    * anonymous callers: never
     """
+    if user is None:
+        return False
+    if has_permission(user, P.EVIDENCE_VIEW_ALL):
+        return True
+    if has_permission(user, P.EVIDENCE_VIEW_ASSIGNED) and user.team_id and inc.assigned_team_id == user.team_id:
+        return True
+    return has_permission(user, P.EVIDENCE_VIEW_OWN) and inc.reporter_user_id == user.id
+
+
+def can_view(db: Session, asset: MediaAsset, user: Optional[User]) -> bool:
+    """Who may see one evidence photo: the rules above, or the signed-in uploader before it is attached."""
     if user is None:
         return False
     if asset.incident_id is None:
         return asset.uploader_user_id == user.id
     inc = db.query(Incident).filter(Incident.id == asset.incident_id).first()
-    if inc is None:
-        return False
-    if user.role in STAFF_ROLES:
-        return True
-    if user.role == "RESCUE_OFFICER":
-        return bool(user.team_id) and inc.assigned_team_id == user.team_id
-    if user.role in ("CITIZEN", "VOLUNTEER"):
-        return inc.reporter_user_id == user.id
-    return False
+    return inc is not None and can_view_incident_evidence(inc, user)
 
 
 def asset_for_legacy_filename(db: Session, filename: str) -> Optional[Incident]:

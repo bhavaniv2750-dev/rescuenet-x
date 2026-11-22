@@ -1,6 +1,6 @@
 """Create the first accounts.
 
-* With SEED_DEMO_USERS on (the default, for development and the project demo),
+* With SEED_DEMO_USERS on AND RESCUENET_ENV=development (never in production),
   one account per role is created with DEMO_USER_PASSWORD.
 * With it off, only an admin account is created, using RESCUENET_ADMIN_PASSWORD
   or a random password that is printed once and saved to backend/.admin_password.
@@ -18,6 +18,7 @@ from app.models.entities import RescueTeam, User, Volunteer
 DEMO_ACCOUNTS = [
     # username, full name, role, team, volunteer, email
     ("admin", "System Administrator", "ADMIN", None, None, "admin@rescuenet.local"),
+    ("developer", "Developer (Demo, diagnostics only)", "DEVELOPER", None, None, "developer@rescuenet.local"),
     ("commander", "Incident Commander (Demo)", "COMMANDER", None, None, "commander@rescuenet.local"),
     ("operator", "Control Room Operator (Demo)", "OPERATOR", None, None, "operator@rescuenet.local"),
     ("officer", "Rescue Officer, Thunder-1 (Demo)", "RESCUE_OFFICER", "TEAM-NDRF-10", None, "officer@rescuenet.local"),
@@ -31,7 +32,10 @@ def seed_users() -> None:
     try:
         if db.query(User).count() > 0:
             return
-        if settings.SEED_DEMO_USERS:
+        if settings.SEED_DEMO_USERS and not settings.is_development:
+            print("[init_db] SEED_DEMO_USERS is ignored because RESCUENET_ENV is not 'development'. "
+                  "Demo accounts are never created in production.")
+        if settings.SEED_DEMO_USERS and settings.is_development:
             pw_hash = hash_password(settings.DEMO_USER_PASSWORD)
             for username, name, role, team, vol, email in DEMO_ACCOUNTS:
                 if team and not db.query(RescueTeam).filter(RescueTeam.id == team).first():

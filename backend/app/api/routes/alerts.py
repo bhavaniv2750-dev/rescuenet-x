@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import actor_name, actor_role, get_current_user, require_roles
-from app.core.security import APPROVERS, OPS
+from app.api.deps import actor_name, actor_role, ensure_permission, get_current_user, require_permission
+from app.core.permissions import P, has_permission
 from app.db.session import get_db
 from app.models.entities import Alert, User
 from app.schemas.domain import AlertCreate, AlertOut
@@ -32,7 +32,8 @@ def list_alerts(status_filter: Optional[str] = None, db: Session = Depends(get_d
 
 
 @router.post("/", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
-def create_alert(payload: AlertCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*OPS))):
+def create_alert(payload: AlertCreate, db: Session = Depends(get_db), user: User = Depends(require_permission(P.ALERT_PUBLISH))):
+    ensure_permission(user, P.ALERT_PUBLISH)  # service-level: publishing is never implied by another permission
     duplicate = find_duplicate(db, payload.title, payload.severity, payload.latitude, payload.longitude)
     if duplicate is not None:
         record_audit(db, actor_name(user), "ALERT_DUPLICATE_BLOCKED", "alert", duplicate.id, payload.title, role=actor_role(user))
@@ -78,7 +79,7 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db), user: User =
     if alert.status == "RESOLVED":
         raise HTTPException(status_code=409, detail="This alert is already resolved")
 
-    if user.role in APPROVERS:
+    if has_permission(user, P.ALERT_ACK_CONTROL):
         if alert.status == "ACTIVE":
             alert.status = "ACKNOWLEDGED"
             alert.acknowledged_by = actor_name(user)
@@ -91,7 +92,7 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db), user: User =
 
 
 @router.post("/{alert_id}/resolve", response_model=AlertOut)
-def resolve_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(*OPS))):
+def resolve_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission(P.ALERT_RESOLVE))):
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")

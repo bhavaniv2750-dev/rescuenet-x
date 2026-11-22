@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from app.api.deps import actor_name, actor_role, require_roles
-from app.core.security import APPROVERS, DEPT, OPS
+from app.api.deps import actor_name, actor_role, require_permission
+from app.core.permissions import P
 from app.db.session import get_db
 from app.models.entities import Facility, User
 from app.services.audit import record_audit
@@ -59,8 +59,8 @@ def list_facilities(
         "total_occupancy": sum(f.current_occupancy for f in facilities),
     }
 
-@router.post("/", response_model=FacilityOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*OPS))])
-def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*OPS))):
+@router.post("/", response_model=FacilityOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(P.FACILITY_MANAGE))])
+def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user: User = Depends(require_permission(P.FACILITY_MANAGE))):
     prefix = payload.facility_type.upper().split("_")[0][:5]
     number = db.query(Facility).count() + 1
     new_id = f"FAC-{prefix}-{number:02d}"
@@ -90,7 +90,7 @@ def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user
 
 @router.patch("/{facility_id}/occupancy", response_model=FacilityOut)
 def update_occupancy(facility_id: str, payload: FacilityOccupancyUpdate, db: Session = Depends(get_db),
-                     user: User = Depends(require_roles(*OPS))):
+                     user: User = Depends(require_permission(P.FACILITY_MANAGE))):
     """Update how many people a facility holds; the status follows from the numbers."""
     facility = db.query(Facility).filter(Facility.id == facility_id).first()
     if not facility:
