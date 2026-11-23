@@ -229,3 +229,34 @@ def test_existing_database_is_backed_up_before_the_sessions_migration(engine):
     migrations.ensure_schema(engine)          # a managed database one revision behind head
     assert migrations.current_revision(engine) == migrations.head_revision()
     assert len(list(settings.BACKUP_DIR.glob("*pre-migration*.db.bak"))) == 1
+
+
+# ---------------------------------------------------------------- S3: revision 0004
+
+def test_0004_adds_contact_recovery_and_rate_limit_structures_without_marking_anything_verified(engine):
+    migrations.upgrade(engine, "0003")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO users (username, full_name, role, email, password_hash, is_active, failed_logins, token_version, created_at) "
+                       "VALUES ('old_user','Old','CITIZEN','old@example.org','h',1,0,0,'2025-01-01')"))
+    migrations.upgrade(engine)
+    insp = inspect(engine)
+    assert {"one_time_tokens", "notification_outbox", "rate_limit_events"} <= set(insp.get_table_names())
+    assert {"email_verified_at", "phone_verified_at", "email_changed_at", "must_change_password"} <= {c["name"] for c in insp.get_columns("users")}
+    with engine.connect() as c:
+        row = c.execute(text("SELECT email, email_verified_at, phone_verified_at, must_change_password FROM users")).one()
+        assert tuple(row) == ("old@example.org", None, None, 0)        # existing addresses stay UNVERIFIED; nobody is forced to change a password
+    assert migrations.schema_drift(engine) == []
+
+
+def test_0004_up_down_up_keeps_users_and_the_sessions_tables(engine):
+    migrations.upgrade(engine, "0003")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO users (username, full_name, role, password_hash, is_active, failed_logins, token_version, created_at) "
+                       "VALUES ('keep','Keep','CITIZEN','h',1,0,0,'2025-01-01')"))
+    migrations.upgrade(engine)
+    migrations.downgrade(engine, "0003")
+    assert "rate_limit_events" not in inspect(engine).get_table_names() and "auth_sessions" in inspect(engine).get_table_names()
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM users WHERE username='keep'")).scalar() == 1
+    migrations.upgrade(engine)
+    assert migrations.schema_drift(engine) == []

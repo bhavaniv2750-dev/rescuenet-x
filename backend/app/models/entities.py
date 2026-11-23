@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -265,6 +266,12 @@ class User(Base):
     # Bumped whenever the account's access must end everywhere (password change, deactivation, role/team change).
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
     password_changed_at = Column(DateTime, nullable=True)
+    # Contact verification (a code was entered correctly; never set merely because a code was sent)
+    email_verified_at = Column(DateTime, nullable=True)
+    phone_verified_at = Column(DateTime, nullable=True)
+    email_changed_at = Column(DateTime, nullable=True)
+    # Set by host-level recovery and admin resets of public accounts: only the password-change endpoints work until cleared
+    must_change_password = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=utc_now)
 
 
@@ -297,3 +304,52 @@ class RefreshToken(Base):
     created_at = Column(DateTime, nullable=False, default=utc_now)
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
+
+
+class OneTimeToken(Base):
+    """A verification code or password-reset token. Only a hash is stored (HMAC for short numeric codes, SHA-256 for long
+    random reset tokens). Single use, short lived, with an attempt counter."""
+    __tablename__ = "one_time_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    purpose = Column(String(20), nullable=False)       # EMAIL_VERIFY | PHONE_VERIFY | PASSWORD_RESET
+    target = Column(String(160), nullable=True)        # the address/number a verification code was issued for
+    token_hash = Column(String(64), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+
+
+class NotificationOutbox(Base):
+    """Record of a notification handed to a transport, with an honest delivery status. The message body (which holds the
+    code or link) is stored ONLY for the development outbox and is never exposed outside development."""
+    __tablename__ = "notification_outbox"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    channel = Column(String(10), nullable=False)        # EMAIL | SMS
+    purpose = Column(String(30), nullable=False)
+    recipient_masked = Column(String(120), nullable=False)
+    transport = Column(String(20), nullable=False)      # DEV_OUTBOX | SMTP | DISABLED
+    # NOT_DELIVERED_DEV (stored in the dev outbox only) | ACCEPTED_BY_SMTP (server accepted it; inbox delivery unknown)
+    # | FAILED | DISABLED (no transport configured). Nothing here ever means "delivered to the person".
+    delivery_status = Column(String(20), nullable=False)
+    detail = Column(String(200), nullable=True)
+    subject = Column(String(160), nullable=True)
+    body = Column(Text, nullable=True)                  # development outbox only
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+
+class RateLimitEvent(Base):
+    """One counted event for the shared, persistent rate limiter (works across workers that share the database)."""
+    __tablename__ = "rate_limit_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bucket = Column(String(40), nullable=False)
+    key_hash = Column(String(32), nullable=False)       # keyed hash of the address/identifier, never the raw value
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    __table_args__ = (Index("ix_rate_limit_lookup", "bucket", "key_hash", "created_at"),)

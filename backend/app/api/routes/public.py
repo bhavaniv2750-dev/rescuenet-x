@@ -51,8 +51,8 @@ def track_report(public_ref: str, request: Request, db: Session = Depends(get_db
     """Limited status for a reporter. The tracking code travels in a header so it does not end up in URLs or logs.
     An unknown reference and a wrong code give exactly the same answer."""
     ip = rate_limit.client_fingerprint(request)
-    rate_limit.check("track-lookups", ip, settings.TRACKING_LOOKUPS_PER_HOUR, 3600)
-    if rate_limit.too_many("track-failures", ip, settings.TRACKING_FAILURES_PER_15_MIN, 900):
+    rate_limit.check("track-lookups", ip, settings.TRACKING_LOOKUPS_PER_HOUR, 3600, fail_open=True)
+    if rate_limit.too_many("track-failures", ip, settings.TRACKING_FAILURES_PER_15_MIN, 900, fail_open=True):
         raise HTTPException(status_code=429, headers={"Retry-After": "900"},
                             detail=f"Too many unsuccessful attempts. Please wait 15 minutes. {rate_limit.EMERGENCY_NOTE}")
 

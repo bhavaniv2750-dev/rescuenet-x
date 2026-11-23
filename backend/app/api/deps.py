@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -35,13 +35,21 @@ def _user_from_token(creds: Optional[HTTPAuthorizationCredentials], db: Session)
     return user
 
 
+# Until a forced password change is done (after break-glass recovery or an administrator's reset of a public account), these
+# are the only authenticated endpoints that work. Everything else, including every operational permission, answers 403.
+PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/me/password", "/api/auth/logout", "/api/auth/logout-all"}
+
+
 def get_current_user(
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer), db: Session = Depends(get_db)
+    request: Request, creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer), db: Session = Depends(get_db)
 ) -> User:
     user = _user_from_token(creds, db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in required",
                             headers={"WWW-Authenticate": "Bearer"})
+    if user.must_change_password and request.url.path.rstrip("/") not in PASSWORD_CHANGE_ALLOWED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, headers={"X-Password-Change-Required": "true"},
+                            detail="You must change your temporary password before doing anything else.")
     return user
 
 

@@ -100,3 +100,42 @@ def make_user(role: str = "OPERATOR", password: str = "Str0ng!Passw0rd", team_id
 
 PORTAL_FOR_ROLE = {"ADMIN": "admin", "DEVELOPER": "admin", "COMMANDER": "operations", "OPERATOR": "operations",
                    "RESCUE_OFFICER": "operations", "VOLUNTEER": "public", "CITIZEN": "public"}
+
+
+def latest_dev_message(user_id=None, purpose=None):
+    """Newest message in the development outbox (the only place a code or reset link is ever readable)."""
+    from app.db.session import SessionLocal
+    from app.models.entities import NotificationOutbox
+
+    db = SessionLocal()
+    try:
+        q = db.query(NotificationOutbox).filter(NotificationOutbox.transport == "DEV_OUTBOX")
+        if user_id is not None:
+            q = q.filter(NotificationOutbox.user_id == user_id)
+        if purpose:
+            q = q.filter(NotificationOutbox.purpose == purpose)
+        return q.order_by(NotificationOutbox.id.desc()).first()
+    finally:
+        db.close()
+
+
+def make_user_with_email(role="CITIZEN", email=None, verified=False, password="Str0ng!Passw0rd", changed_hours_ago=None):
+    """Account with an email address, optionally already verified (set directly: simulates a completed verification)."""
+    from datetime import datetime, timedelta, timezone
+    from app.db.session import SessionLocal
+    from app.models.entities import User
+
+    uid, name = make_user(role, password, prefix="s3")
+    email = email or f"{name}@example.org"
+    db = SessionLocal()
+    try:
+        u = db.get(User, uid)
+        u.email = email
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        u.email_verified_at = now if verified else None
+        if changed_hours_ago is not None:
+            u.email_changed_at = now - timedelta(hours=changed_hours_ago)
+        db.commit()
+    finally:
+        db.close()
+    return uid, name, email

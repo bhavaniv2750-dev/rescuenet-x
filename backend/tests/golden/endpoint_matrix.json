@@ -89,6 +89,16 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "GET /api/auth/capabilities": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
   "GET /api/auth/me": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -198,6 +208,16 @@
     "RESCUE_OFFICER": "403",
     "VOLUNTEER": "403",
     "anonymous": "401"
+  },
+  "GET /api/dev/outbox": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
   },
   "GET /api/diagnostics/": {
     "ADMIN": "allow",
@@ -419,6 +439,16 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "PATCH /api/auth/me/contact": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
   "PATCH /api/auth/users/{user_id}": {
     "ADMIN": "allow",
     "CITIZEN": "403",
@@ -559,6 +589,26 @@
     "VOLUNTEER": "allow",
     "anonymous": "401"
   },
+  "POST /api/auth/password/forgot": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
+  "POST /api/auth/password/reset": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
   "POST /api/auth/register": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -587,6 +637,46 @@
     "OPERATOR": "403",
     "RESCUE_OFFICER": "403",
     "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "POST /api/auth/verify/email/confirm": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/verify/email/request": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/verify/phone/confirm": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/verify/phone/request": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
     "anonymous": "401"
   },
   "POST /api/datasets/images/preprocess/{filename}": {

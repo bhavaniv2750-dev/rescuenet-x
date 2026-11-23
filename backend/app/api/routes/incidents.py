@@ -48,7 +48,8 @@ async def upload_incident_image(request: Request, file: UploadFile = File(...), 
     signed_in = isinstance(user, User)
     fingerprint = client_fingerprint(request)
     rate_limit.check("upload-user" if signed_in else "upload-guest", str(user.id) if signed_in else fingerprint,
-                     settings.USER_REPORTS_PER_HOUR * settings.MAX_IMAGES_PER_REPORT if signed_in else settings.GUEST_UPLOADS_PER_HOUR, 3600)
+                     settings.USER_REPORTS_PER_HOUR * settings.MAX_IMAGES_PER_REPORT if signed_in else settings.GUEST_UPLOADS_PER_HOUR, 3600,
+                     fail_open=True)
     try:
         raw = media.read_limited(file.file, settings.MAX_IMAGE_BYTES)
         asset = media.store_upload(db, raw, user=user if signed_in else None, client_hash=fingerprint)
@@ -383,9 +384,9 @@ def create_report(db: Session, payload: IncidentCreate, request: Request, user: 
     """
     signed_in = isinstance(user, User)
     if signed_in:
-        rate_limit.check("report-user", str(user.id), settings.USER_REPORTS_PER_HOUR, 3600)
+        rate_limit.check("report-user", str(user.id), settings.USER_REPORTS_PER_HOUR, 3600, fail_open=True)
     else:
-        rate_limit.check("report-guest", client_fingerprint(request), settings.GUEST_REPORTS_PER_HOUR, 3600)
+        rate_limit.check("report-guest", client_fingerprint(request), settings.GUEST_REPORTS_PER_HOUR, 3600, fail_open=True)
 
     new_id = _new_incident_id(db)
     tracking_code = public_refs.new_tracking_code()

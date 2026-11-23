@@ -3,6 +3,7 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.dashboard import router as dashboard_router
+from app.api.routes.dev import router as dev_router
 from app.api.routes.datasets import router as datasets_router
 from app.api.routes.diagnostics import router as diagnostics_router
 from app.api.routes.facilities import router as facilities_router
@@ -26,6 +27,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[Depends(require_permission(P.DASHBOARD_VIEW))])
 api_router.include_router(flood_router, prefix="/flood", tags=["Flood"])
 api_router.include_router(incidents_router, prefix="/incidents", tags=["Incidents"])
+api_router.include_router(dev_router, prefix="/dev", tags=["Development only"])
 api_router.include_router(media_router, prefix="/media", tags=["Evidence"])
 api_router.include_router(public_router, prefix="/public", tags=["Public"])
 api_router.include_router(alerts_router, prefix="/alerts", tags=["Alerts"])

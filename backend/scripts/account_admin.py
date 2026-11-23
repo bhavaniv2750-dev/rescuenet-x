@@ -10,8 +10,11 @@ a person with SHELL ACCESS TO THE SERVER, authorised separately from the applica
         --i-am-authorized
 
 * A verified database backup is taken first.
-* A random one-time password is generated and printed ONCE to this terminal. Hand it to the account owner out of band and
-  have them change it at first sign-in. It is never written to a file or a log.
+* A random one-time password is generated and printed ONCE to this terminal. Hand it to the account owner out of band.
+  It is never written to a file or a log; only its salted PBKDF2 hash is stored.
+* The account is flagged "must change password": until the owner has chosen a new password (which cannot be the temporary
+  one) every operational endpoint answers 403; only sign-in, viewing their own profile, changing the password and signing
+  out work. Recovery never changes the account's role or permissions.
 * Every use is recorded in the audit log (actor "cli:<operating-system user>", the reason, no secrets).
 * All existing sessions of the account are ended.
 """
@@ -30,6 +33,7 @@ from app.db import backup as backup_mod  # noqa: E402
 from app.db.migrations import ensure_schema  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.entities import RescueTeam, User  # noqa: E402
+from app.services import rate_limit  # noqa: E402
 from app.services import sessions as sess  # noqa: E402
 from app.services.audit import record_audit  # noqa: E402
 
@@ -81,7 +85,7 @@ def main() -> int:
                 print("Refused: a rescue officer needs an existing --team-id.", file=sys.stderr)
                 return 1
             user = User(username=username, full_name=args.full_name, role=args.role, team_id=args.team_id,
-                        password_hash=hash_password(password))
+                        password_hash=hash_password(password), must_change_password=True)
             db.add(user)
             db.flush()
             record_audit(db, actor, "ACCOUNT_CLI_CREATED", "user", user.id, f"{username} as {args.role}; reason: {args.reason}", role="HOST_OPERATOR")
@@ -90,13 +94,15 @@ def main() -> int:
                 print(f"Refused: no account named '{username}'.", file=sys.stderr)
                 return 1
             user.password_hash = hash_password(password)
+            user.must_change_password = True
             user.failed_logins, user.locked_until = 0, None
             record_audit(db, actor, "ACCOUNT_CLI_PASSWORD_RESET", "user", user.id, f"{username}; reason: {args.reason}", role="HOST_OPERATOR")
             sess.revoke_all_sessions(db, user, "CLI_PASSWORD_RESET", actor=actor, role="HOST_OPERATOR")
         db.commit()
+        rate_limit.clear("login-account", rate_limit.identifier_key(username))
         print(f"Account '{username}' ({user.role}) signs in through the '{ROLE_PORTAL.get(user.role)}' portal.")
         print(f"One-time password (shown once, not stored anywhere in clear): {password}")
-        print("Give it to the owner out of band and ask them to change it immediately (Account > Change password).")
+        print("Give it to the owner out of band. They must change it at first sign-in; until then the account can do nothing else.")
         return 0
     finally:
         db.close()

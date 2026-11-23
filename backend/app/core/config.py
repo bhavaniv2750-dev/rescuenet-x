@@ -62,6 +62,32 @@ class Settings(BaseSettings):
     # which a client could forge. Set to 1 behind one trusted proxy.
     TRUSTED_PROXY_COUNT: int = int(os.getenv("TRUSTED_PROXY_COUNT", "0"))
 
+    # ---- Contact verification, password recovery, notifications, rate limits (S3)
+    PUBLIC_APP_URL: str = os.getenv("PUBLIC_APP_URL", "http://127.0.0.1:5175")   # base of links in emails (reset link)
+    VERIFY_CODE_MINUTES: int = int(os.getenv("VERIFY_CODE_MINUTES", "10"))
+    VERIFY_MAX_ATTEMPTS: int = int(os.getenv("VERIFY_MAX_ATTEMPTS", "5"))          # wrong codes before a code is void
+    VERIFY_RESEND_COOLDOWN_S: int = int(os.getenv("VERIFY_RESEND_COOLDOWN_S", "60"))
+    RESET_TOKEN_MINUTES: int = int(os.getenv("RESET_TOKEN_MINUTES", "30"))
+    STAFF_RESET_COOLDOWN_HOURS: int = int(os.getenv("STAFF_RESET_COOLDOWN_HOURS", "24"))   # staff: no email reset soon after the email changed
+    # SMTP for real email delivery. Without SMTP_HOST, development uses the labelled dev outbox (nothing is delivered)
+    # and production delivers nothing. The password comes from the environment only.
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "")
+    SMTP_STARTTLS: bool = os.getenv("SMTP_STARTTLS", "true").lower() in ("1", "true", "yes")
+    SMTP_TIMEOUT_S: float = float(os.getenv("SMTP_TIMEOUT_S", "10"))
+    # Rate limits (events per window, per client address unless stated). Counted in the shared database store.
+    LOGIN_PER_IP_15MIN: int = int(os.getenv("LOGIN_PER_IP_15MIN", "30"))
+    LOGIN_PER_ACCOUNT_15MIN: int = int(os.getenv("LOGIN_PER_ACCOUNT_15MIN", "5"))   # per supplied username/email (failures)
+    REGISTER_PER_IP_HOUR: int = int(os.getenv("REGISTER_PER_IP_HOUR", "10"))
+    VERIFY_SEND_PER_ACCOUNT_HOUR: int = int(os.getenv("VERIFY_SEND_PER_ACCOUNT_HOUR", "5"))
+    VERIFY_CONFIRM_PER_ACCOUNT_HOUR: int = int(os.getenv("VERIFY_CONFIRM_PER_ACCOUNT_HOUR", "15"))
+    FORGOT_PER_IP_HOUR: int = int(os.getenv("FORGOT_PER_IP_HOUR", "5"))
+    FORGOT_PER_IDENTIFIER_HOUR: int = int(os.getenv("FORGOT_PER_IDENTIFIER_HOUR", "3"))
+    RESET_PER_IP_HOUR: int = int(os.getenv("RESET_PER_IP_HOUR", "10"))
+
     # Ollama Supervisor Settings
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
@@ -90,6 +116,10 @@ class Settings(BaseSettings):
     LORA_GATEWAY_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.SMTP_HOST and self.SMTP_FROM)
 
     @property
     def access_token_minutes(self) -> float:

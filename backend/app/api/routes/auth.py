@@ -10,7 +10,7 @@ Department and admin accounts are created by an administrator.
 from datetime import timedelta
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -28,7 +28,10 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.entities import AuditLog, AuthSession, RefreshToken, RescueTeam, User, Volunteer
+from app.services import notifications as notif
+from app.services import rate_limit
 from app.services import sessions as sess
+from app.services import verification as ver
 from app.services.audit import record_audit
 from app.services.ids import next_volunteer_id
 
@@ -72,6 +75,9 @@ class UserOut(BaseModel):
     volunteer_verified: Optional[bool] = None
     is_active: bool
     permissions: List[str] = []   # what this role may do (informational; the API enforces it on every call)
+    email_verified: bool = False
+    phone_verified: bool = False
+    password_change_required: bool = False   # only the password-change endpoints work until this is cleared
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -122,7 +128,10 @@ class AuditEntryOut(BaseModel):
 def user_out(db: Session, user: User) -> UserOut:
     out = UserOut.model_validate(user)
     out.portal = ROLE_PORTAL.get(user.role, "")
-    out.permissions = sorted(permissions_for_role(user.role))
+    out.permissions = [] if user.must_change_password else sorted(permissions_for_role(user.role))
+    out.email_verified = user.email_verified_at is not None
+    out.phone_verified = user.phone_verified_at is not None
+    out.password_change_required = bool(user.must_change_password)
     if user.volunteer_id:
         vol = db.query(Volunteer).filter(Volunteer.id == user.volunteer_id).first()
         out.volunteer_verified = bool(vol and vol.is_verified)
@@ -170,24 +179,39 @@ def list_portals():
     }
 
 
+LOCKED = "Too many failed attempts. Try again in a few minutes."
+
+
+def _find_login_user(db: Session, ident: str) -> Optional[User]:
+    """Username first. An e-mail address works only when exactly ONE account has it: an address typed by someone else at
+    sign-up (unverified) must never decide which account a login reaches."""
+    user = db.query(User).filter(User.username == ident).first()
+    if user is not None:
+        return user
+    matches = db.query(User).filter(User.email == ident).limit(2).all()
+    return matches[0] if len(matches) == 1 else None
+
+
 @router.post("/login", response_model=TokenOut)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     ident = payload.username.strip().lower()
-    user = db.query(User).filter((User.username == ident) | (User.email == ident)).first()
+    ip, account_key = rate_limit.client_fingerprint(request), rate_limit.identifier_key(ident)
+    # Both limits apply whether or not the account exists, and give the same answer, so they reveal nothing.
+    rate_limit.check("login-ip", ip, settings.LOGIN_PER_IP_15MIN, 900)
+    if rate_limit.too_many("login-account", account_key, settings.LOGIN_PER_ACCOUNT_15MIN, 900):
+        raise HTTPException(status_code=429, detail=LOCKED, headers={"Retry-After": "900"})
+    user = _find_login_user(db, ident)
     now = utcnow_naive()
     generic = HTTPException(status_code=401, detail="Wrong username or password")
     if user is None:
         verify_password(payload.password, hash_password("timing-equaliser"))  # similar response time
+        rate_limit.record("login-account", account_key)
         raise generic
-    if user.locked_until and user.locked_until > now:
-        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.")
     if not verify_password(payload.password, user.password_hash):
-        user.failed_logins = (user.failed_logins or 0) + 1
-        if user.failed_logins >= MAX_FAILED_LOGINS:
-            user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
-            user.failed_logins = 0
-            record_audit(db, user.username, "LOGIN_LOCKED", "user", user.id, f"{MAX_FAILED_LOGINS} failed attempts", role=user.role)
-        db.commit()
+        rate_limit.record("login-account", account_key)
+        if rate_limit.hits("login-account", account_key, 900) >= settings.LOGIN_PER_ACCOUNT_15MIN:
+            record_audit(db, user.username, "LOGIN_LOCKED", "user", user.id, f"{settings.LOGIN_PER_ACCOUNT_15MIN} failed attempts", role=user.role)
+            db.commit()
         raise generic
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled. Contact an administrator.")
@@ -203,14 +227,15 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    """Self sign-up for citizens and volunteers. Volunteers start unverified."""
+    """Self sign-up for citizens and volunteers. Volunteers start unverified. The e-mail address starts UNVERIFIED too."""
+    rate_limit.check("register-ip", rate_limit.client_fingerprint(request), settings.REGISTER_PER_IP_HOUR, 3600)
     _check_password(payload.password)
     username = payload.username.lower()
-    email = payload.email.strip().lower() if payload.email else None
+    email = _valid_email(payload.email)
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=409, detail="That username is taken")
-    if email and db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=409, detail="An account with that email already exists")
+    # An already-used e-mail address is NOT reported (that would reveal who has an account). Several accounts may hold the
+    # same unverified address; only the owner who proves it with a code can verify it (see /auth/verify/email/confirm).
 
     volunteer_id = None
     if payload.role == "VOLUNTEER":
@@ -338,17 +363,246 @@ def revoke_one_session(session_id: str, user: User = Depends(get_current_user), 
 @router.post("/me/password")
 def change_password(payload: PasswordChange, request: Request, response: Response, user: User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
-    """Change your own password. Every session, including this one, ends; a fresh session is started for this device."""
+    """Change your own password. Every session, including this one, ends; a fresh session is started for this device.
+    This is also how a forced change after break-glass recovery is completed: the temporary password cannot be reused."""
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is wrong")
     _check_password(payload.new_password)
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=422, detail="Choose a new password that is different from the current one.")
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = utcnow_naive()
+    user.must_change_password = False
     record_audit(db, user.username, "PASSWORD_CHANGED", "user", user.id, role=user.role)
     ended = sess.revoke_all_sessions(db, user, "PASSWORD_CHANGED", actor=user.username, role=user.role)
     out = start_session(db, user, request, response)
     return {"message": "Password changed. All other sessions were signed out.", "sessions_ended": ended,
             **out.model_dump(mode="json")}
+
+
+# ---------- contact verification ----------
+EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _valid_email(value: Optional[str]) -> Optional[str]:
+    email = ver.normalise_email(value)
+    if email and (len(email) > 120 or not EMAIL_RE.match(email)):
+        raise HTTPException(status_code=422, detail="That does not look like an email address.")
+    return email
+
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class ContactChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=30)
+
+
+@router.get("/capabilities")
+def capabilities():
+    """What this server can honestly do about notifications (no secrets). The page uses it to word messages truthfully."""
+    return notif.capabilities()
+
+
+def _delivery_text(row: "notif.NotificationOutbox", channel_word: str) -> str:
+    if row.delivery_status == notif.NOT_DELIVERED_DEV:
+        return f"Development mode: the code is in the development outbox. {notif.DEV_NOTICE}"
+    if row.delivery_status == notif.ACCEPTED_BY_SMTP:
+        return f"The code was handed to the mail server for {row.recipient_masked}. Delivery is not guaranteed: check your spam folder."
+    return f"The {channel_word} could not be sent."
+
+
+def _request_code(channel: str, user: User, db: Session) -> dict:
+    purpose = ver.EMAIL_VERIFY if channel == "EMAIL" else ver.PHONE_VERIFY
+    target = user.email if channel == "EMAIL" else user.phone
+    verified = user.email_verified_at if channel == "EMAIL" else user.phone_verified_at
+    transport = notif.email_transport() if channel == "EMAIL" else notif.sms_transport()
+    word = "email" if channel == "EMAIL" else "text message"
+    if transport.name == "DISABLED":
+        # A fact about the server, not about any account, so it is safe to state plainly.
+        raise HTTPException(status_code=409 if channel == "SMS" else 503,
+                            detail=f"{'Phone' if channel == 'SMS' else 'Email'} verification is not available: {transport.reason}. "
+                                   f"Your {'phone number' if channel == 'SMS' else 'email address'} stays unverified.")
+    if not target:
+        raise HTTPException(status_code=422, detail=f"Add {'an email address' if channel == 'EMAIL' else 'a phone number'} to your account first.")
+    if verified:
+        return {"already_verified": True, "message": "Already verified."}
+    rate_limit.check("verify-send", f"{user.id}:{channel}", settings.VERIFY_SEND_PER_ACCOUNT_HOUR, 3600)
+    try:
+        code = ver.issue_code(db, user, purpose, target)
+    except ver.Cooldown as c:
+        raise HTTPException(status_code=429, headers={"Retry-After": str(c.seconds)},
+                            detail=f"A code was requested a moment ago. Please wait {c.seconds} seconds before asking for another.")
+    record_audit(db, user.username, "CONTACT_VERIFICATION_REQUESTED", "user", user.id, channel, role=user.role)
+    db.commit()
+    body = (f"Your RescueNet X verification code is {code}. It expires in {settings.VERIFY_CODE_MINUTES} minutes. "
+            "If you did not ask for it, ignore this message.")
+    row = notif.notify(notif.Message(channel, target, "Your RescueNet X verification code", body, purpose, user.id))
+    if row.delivery_status in (notif.FAILED, notif.DISABLED):
+        ver.void_verification_codes(db, user.id, purpose)   # nothing reached the person; do not leave a live code behind
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"The {word} could not be sent. Try again later.")
+    return {"already_verified": False, "delivery_status": row.delivery_status, "message": _delivery_text(row, word),
+            "cooldown_seconds": settings.VERIFY_RESEND_COOLDOWN_S, "expires_in_minutes": settings.VERIFY_CODE_MINUTES}
+
+
+def _confirm_code(channel: str, payload: CodeIn, user: User, db: Session) -> dict:
+    purpose = ver.EMAIL_VERIFY if channel == "EMAIL" else ver.PHONE_VERIFY
+    transport = notif.email_transport() if channel == "EMAIL" else notif.sms_transport()
+    if channel == "SMS" and transport.name == "DISABLED":
+        raise HTTPException(status_code=409, detail=f"Phone verification is not available: {transport.reason}.")
+    rate_limit.check("verify-confirm", f"{user.id}:{channel}", settings.VERIFY_CONFIRM_PER_ACCOUNT_HOUR, 3600)
+    target = user.email if channel == "EMAIL" else user.phone
+    invalid = HTTPException(status_code=400, detail="That code is invalid or has expired. Request a new one.")
+    if not target or not ver.check_code(db, user, purpose, target, payload.code):
+        raise invalid
+    if channel == "EMAIL" and db.query(User).filter(User.email == target, User.id != user.id, User.email_verified_at.isnot(None)).first():
+        raise invalid      # another account already proved this address; answer like any wrong code
+    if channel == "EMAIL":
+        user.email_verified_at = utcnow_naive()
+    else:
+        user.phone_verified_at = utcnow_naive()
+    record_audit(db, user.username, "EMAIL_VERIFIED" if channel == "EMAIL" else "PHONE_VERIFIED", "user", user.id, role=user.role)
+    db.commit()
+    return {"verified": True, "channel": channel.lower()}
+
+
+@router.post("/verify/email/request")
+def request_email_verification(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _request_code("EMAIL", user, db)
+
+
+@router.post("/verify/email/confirm")
+def confirm_email(payload: CodeIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _confirm_code("EMAIL", payload, user, db)
+
+
+@router.post("/verify/phone/request")
+def request_phone_verification(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _request_code("SMS", user, db)
+
+
+@router.post("/verify/phone/confirm")
+def confirm_phone(payload: CodeIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _confirm_code("SMS", payload, user, db)
+
+
+@router.patch("/me/contact")
+def change_contact(payload: ContactChange, background: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Change your email or phone. Needs your current password. A changed address is UNVERIFIED until a new code is entered;
+    codes issued for the old address stop working, and a verified old address is told about the change."""
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is wrong")
+    changed: List[str] = []
+    old_verified_email = user.email if user.email_verified_at else None
+    if payload.email is not None:
+        new_email = _valid_email(payload.email)
+        if new_email != user.email:
+            user.email, user.email_verified_at, user.email_changed_at = new_email, None, utcnow_naive()
+            ver.void_verification_codes(db, user.id, ver.EMAIL_VERIFY)
+            ver.void_reset_tokens(db, user.id)
+            changed.append("email")
+    if payload.phone is not None:
+        new_phone = ver.normalise_phone(payload.phone)
+        if new_phone != user.phone:
+            user.phone, user.phone_verified_at = new_phone, None
+            ver.void_verification_codes(db, user.id, ver.PHONE_VERIFY)
+            changed.append("phone")
+    if changed:
+        record_audit(db, user.username, "CONTACT_CHANGED", "user", user.id, f"{'+'.join(changed)} changed; re-verification required", role=user.role)
+    db.commit()
+    if "email" in changed and old_verified_email:
+        background.add_task(notif.notify, notif.Message(
+            "EMAIL", old_verified_email, "Your RescueNet X email address was changed",
+            "The email address on your RescueNet X account was changed. If this was not you, sign in and change your password, "
+            "or contact your administrator.", "CONTACT_CHANGED_NOTICE", user.id))
+    db.refresh(user)
+    return {"changed": changed, "user": user_out(db, user), "message": "Saved. A changed email or phone must be verified again." if changed else "Nothing changed."}
+
+
+# ---------- password recovery ----------
+RESET_REQUESTED = ("If an account matches and its email address is verified, password-reset instructions have been requested. "
+                   "Nothing here confirms that an account exists.")
+INVALID_RESET = "This reset link is invalid or has expired. Request a new one."
+
+
+class ForgotIn(BaseModel):
+    identifier: str = Field(min_length=1, max_length=120)
+
+
+class ResetIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/password/forgot", status_code=status.HTTP_202_ACCEPTED)
+def forgot_password(payload: ForgotIn, request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Always answers the same way (202, same text) whether or not an account matches, so it cannot be used to discover
+    accounts. A reset link is requested only for an active account with a VERIFIED email address; staff accounts also need
+    an address that was not changed in the last STAFF_RESET_COOLDOWN_HOURS, so a thief of a session cannot swap the address
+    and reset at once. Resetting never signs anyone in, and it does not bypass sign-in checks (and, later, MFA)."""
+    transport = notif.email_transport()
+    if transport.name == "DISABLED":
+        raise HTTPException(status_code=503, detail=f"Password recovery by email is not available: {transport.reason}. Contact an administrator.")
+    ident = payload.identifier.strip().lower()
+    rate_limit.check("forgot-ip", rate_limit.client_fingerprint(request), settings.FORGOT_PER_IP_HOUR, 3600)
+    rate_limit.check("forgot-id", rate_limit.identifier_key(ident), settings.FORGOT_PER_IDENTIFIER_HOUR, 3600)
+    user = _find_login_user(db, ident)
+    answer = {"message": RESET_REQUESTED, "delivery_mode": transport.name}
+    eligible = bool(user and user.is_active and user.email and user.email_verified_at)
+    if eligible and user.role in PRIVILEGED_ROLES:
+        recent = user.email_changed_at and (utcnow_naive() - user.email_changed_at) < timedelta(hours=settings.STAFF_RESET_COOLDOWN_HOURS)
+        if recent:
+            record_audit(db, user.username, "PASSWORD_RESET_BLOCKED", "user", user.id, "staff email changed recently", role=user.role)
+            db.commit()
+            eligible = False
+    if not eligible:
+        ver._reset_hash(__import__("secrets").token_urlsafe(32))   # similar work for unknown accounts
+        return answer
+    token = ver.issue_reset_token(db, user)
+    record_audit(db, user.username, "PASSWORD_RESET_REQUESTED", "user", user.id, role=user.role)
+    db.commit()
+    link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/?reset={token}"
+    background.add_task(notif.notify, notif.Message(
+        "EMAIL", user.email, "Reset your RescueNet X password",
+        f"Someone asked to reset the password of your RescueNet X account. If it was you, open this link within "
+        f"{settings.RESET_TOKEN_MINUTES} minutes: {link}\nIf it was not you, ignore this message; your password has not changed.",
+        "PASSWORD_RESET", user.id))
+    return answer
+
+
+@router.post("/password/reset")
+def reset_password(payload: ResetIn, request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Set a new password with a single-use reset token. Expired, reused, unknown and malformed tokens all get the same
+    answer. Success ends every session of the account and does NOT sign anyone in."""
+    rate_limit.check("reset-ip", rate_limit.client_fingerprint(request), settings.RESET_PER_IP_HOUR, 3600)
+    _check_password(payload.new_password)          # a weak password does not burn the token
+    found = ver.find_valid_reset(db, payload.token)
+    if found is None or not found[1].is_active:
+        raise HTTPException(status_code=400, detail=INVALID_RESET)
+    row, user = found
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=422, detail="Choose a password you are not already using.")
+    if not ver.claim_reset(db, row):
+        raise HTTPException(status_code=400, detail=INVALID_RESET)
+    user.password_hash = hash_password(payload.new_password)
+    user.password_changed_at = utcnow_naive()
+    user.must_change_password = False
+    user.failed_logins, user.locked_until = 0, None
+    ver.void_reset_tokens(db, user.id)
+    record_audit(db, user.username, "PASSWORD_RESET_COMPLETED", "user", user.id, "via emailed link", role=user.role)
+    sess.revoke_all_sessions(db, user, "PASSWORD_RESET", actor=user.username, role=user.role)
+    db.commit()
+    rate_limit.clear("login-account", rate_limit.identifier_key(user.username))
+    if user.email and user.email_verified_at:
+        background.add_task(notif.notify, notif.Message(
+            "EMAIL", user.email, "Your RescueNet X password was changed",
+            "The password of your RescueNet X account was just changed using a reset link. If this was not you, contact your "
+            "administrator immediately.", "PASSWORD_RESET_NOTICE", user.id))
+    return {"message": "Password changed. Every device was signed out; sign in with your new password."}
 
 
 # ---------- administration ----------
@@ -440,6 +694,7 @@ def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require
         _check_password(payload.new_password)
         user.password_hash = hash_password(payload.new_password)
         user.password_changed_at = utcnow_naive()
+        user.must_change_password = True      # the administrator chose it, so only the owner's own change makes it safe
         user.failed_logins, user.locked_until = 0, None
         changes.append("password reset")
         record_audit(db, actor_name(admin), "USER_PASSWORD_RESET_BY_ADMIN", "user", user.id, user.username, role="ADMIN")

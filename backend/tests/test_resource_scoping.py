@@ -199,7 +199,7 @@ def test_diagnostics_response_holds_no_personal_data_or_secrets():
 
 def test_user_listing_never_exposes_password_hashes():
     users = client("admin").get("/api/auth/users").json()["items"]
-    assert users and all("password" not in " ".join(u).lower() for u in users)
+    assert users and all("password_hash" not in u and "hash" not in " ".join(u).lower() for u in users)
     assert "pbkdf2" not in client("admin").get("/api/auth/users").text
 
 

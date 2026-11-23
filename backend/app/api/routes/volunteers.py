@@ -79,6 +79,13 @@ def update_volunteer(volunteer_id: str, payload: VolunteerStatusUpdate, db: Sess
     if payload.is_verified is not None and payload.is_verified != vol.is_verified:
         if not payload.is_verified and vol.assigned_incident_id:
             raise HTTPException(status_code=409, detail=f"{vol.id} is assigned to {vol.assigned_incident_id}. Release them first.")
+        if payload.is_verified:
+            # A volunteer who signed up with their own account must have proved a way to reach them (email or phone code)
+            # before a coordinator can verify them. Volunteers registered by staff have no account and are not gated here.
+            owner = db.query(User).filter(User.volunteer_id == vol.id).first()
+            if owner is not None and owner.email_verified_at is None and owner.phone_verified_at is None:
+                raise HTTPException(status_code=409, detail=f"{vol.name} has not verified an email address or phone number yet. "
+                                                            "Ask them to verify a contact in their account first.")
         vol.is_verified = payload.is_verified
         vol.verified_by = actor_name(user) if payload.is_verified else None
         record_audit(db, actor_name(user), "VOLUNTEER_VERIFIED" if payload.is_verified else "VOLUNTEER_UNVERIFIED",

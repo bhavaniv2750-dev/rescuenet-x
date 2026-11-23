@@ -87,6 +87,11 @@ MUST_ALLOW = {
     ("GET", "/api/auth/team-options"): {"ADMIN"},
     ("GET", "/api/auth/audit"): {"ADMIN", "COMMANDER"},
     ("GET", "/api/auth/me"): SIGNED_IN,
+    ("POST", "/api/auth/verify/email/request"): SIGNED_IN,
+    ("POST", "/api/auth/verify/email/confirm"): SIGNED_IN,
+    ("POST", "/api/auth/verify/phone/request"): SIGNED_IN,
+    ("POST", "/api/auth/verify/phone/confirm"): SIGNED_IN,
+    ("PATCH", "/api/auth/me/contact"): SIGNED_IN,
     ("GET", "/api/auth/sessions"): SIGNED_IN,
     ("DELETE", "/api/auth/sessions/{session_id}"): SIGNED_IN,
     ("POST", "/api/auth/logout-all"): SIGNED_IN,
@@ -103,7 +108,12 @@ MUST_ALLOW = {
     ("GET", "/api/flood/gauges"): PUBLIC, ("GET", "/api/flood/status"): PUBLIC,
     ("GET", "/api/health"): PUBLIC, ("GET", "/"): PUBLIC,
     ("GET", "/api/datasets/images/file/{filename}"): PUBLIC,
-    ("POST", "/api/auth/login"): PUBLIC, ("POST", "/api/auth/register"): PUBLIC, ("GET", "/api/auth/portals"): PUBLIC,
+    ("POST", "/api/auth/login"): PUBLIC,
+    ("GET", "/api/auth/capabilities"): PUBLIC,
+    ("POST", "/api/auth/password/forgot"): PUBLIC,      # always the same generic answer
+    ("POST", "/api/auth/password/reset"): PUBLIC,       # needs a valid single-use token
+    ("GET", "/api/dev/outbox"): PUBLIC,                 # development + loopback only; 404 elsewhere (tests/test_dev_outbox.py)
+    ("POST", "/api/auth/register"): PUBLIC, ("GET", "/api/auth/portals"): PUBLIC,
 }
 
 
