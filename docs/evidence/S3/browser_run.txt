@@ -1,0 +1,17 @@
+register status 201
+contact before: asha@example.org (not verified)
+server message: Development mode: the code is in the development outbox. DEVELOPMENT OUTBOX: nothing was delivered to any real mailbox or phone.
+dev outbox shows a 6-digit code: true
+wrong code message: That code is invalid or has expired. Request a new one.
+after correct code: asha@example.org (verified)
+identical answers for known and unknown account: true
+answer: If an account matches and its email address is verified, password-reset instructions have been requested. Nothing here confirms that an account exists.
+token removed from address bar: true
+reset result: Password changed. Every device was signed out; sign in with your new password.
+reusing the link: This reset link is invalid or has expired. Request a new one.
+signed in with the new password: true
+CLI created account; temporary password printed once to the operator terminal
+forced screen shown: true
+same-as-temp button enabled? true
+reuse of the temporary password: Choose a new password that is different from the current one.
+after choosing a password the operator workspace opens: true

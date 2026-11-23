@@ -24,6 +24,8 @@ import { DatasetsView } from './components/Views/DatasetsView';
 import { SettingsView } from './components/Views/SettingsView';
 import { PublicHomeView } from './components/Views/PublicHomeView';
 import { DiagnosticsView } from './components/Views/DiagnosticsView';
+import { ForcedPasswordChange } from './components/Auth/ForcedPasswordChange';
+import { ResetPassword } from './components/Auth/ResetPassword';
 import { ReportReceipt, type ReportReceiptData } from './components/UI/ReportReceipt';
 import { MyWorkView } from './components/Views/MyWorkView';
 import { AccountView } from './components/Views/AccountView';
@@ -38,6 +40,17 @@ function Shell() {
 
   // A signed-out visitor either sees the sign-in page or browses as a guest.
   const [receipt, setReceipt] = useState<ReportReceiptData | null>(null);
+  // A password-reset link opens the app as /?reset=TOKEN. The token is read once and removed from the address bar so it does
+  // not stay in the browser history or a Referer header.
+  const [resetToken, setResetToken] = useState<string | null>(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get('reset');
+      if (t) window.history.replaceState(null, '', window.location.pathname);
+      return t;
+    } catch {
+      return null;
+    }
+  });
   const [guest, setGuest] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem(GUEST_KEY) === '1';
@@ -125,12 +138,20 @@ function Shell() {
     'Rescue Operations': staff ? openIncidents || undefined : undefined,
   };
 
+  if (resetToken) {
+    return <ResetPassword token={resetToken} onDone={() => setResetToken(null)} />;
+  }
+
   if (restoring) {
     return (
       <div className="splash">
         <div className="spinner" aria-label="Loading" />
       </div>
     );
+  }
+
+  if (user?.password_change_required) {
+    return <ForcedPasswordChange />;
   }
 
   if (!user && !guest) {

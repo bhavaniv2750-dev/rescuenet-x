@@ -147,6 +147,20 @@ export const api = {
   register: (payload: import('./types').RegisterPayload) =>
     request<import('./types').TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   getMe: () => request<import('./types').AuthUser>('/auth/me'),
+  getCapabilities: () => request<import('./types').Capabilities>('/auth/capabilities'),
+  /** Always answers the same way; it never says whether an account exists. */
+  forgotPassword: (identifier: string) =>
+    request<{ message: string; delivery_mode: string }>('/auth/password/forgot', { method: 'POST', body: JSON.stringify({ identifier }) }),
+  resetPassword: (token: string, new_password: string) =>
+    request<{ message: string }>('/auth/password/reset', { method: 'POST', body: JSON.stringify({ token, new_password }) }),
+  requestVerification: (channel: 'email' | 'phone') =>
+    request<{ already_verified: boolean; message: string; delivery_status?: string; cooldown_seconds?: number }>(`/auth/verify/${channel}/request`, { method: 'POST' }),
+  confirmVerification: (channel: 'email' | 'phone', code: string) =>
+    request<{ verified: boolean }>(`/auth/verify/${channel}/confirm`, { method: 'POST', body: JSON.stringify({ code }) }),
+  changeContact: (payload: { current_password: string; email?: string; phone?: string }) =>
+    request<{ changed: string[]; message: string; user: import('./types').AuthUser }>('/auth/me/contact', { method: 'PATCH', body: JSON.stringify(payload) }),
+  /** Development only: 404 everywhere else. Nothing in it was delivered to anyone. */
+  getDevOutbox: () => request<{ notice: string; items: import('./types').DevOutboxMessage[] }>('/dev/outbox'),
   /** Every session ends when the password changes; the server starts a fresh one for this device and returns its tokens. */
   changePassword: async (current_password: string, new_password: string) => {
     const res = await request<{ message: string; sessions_ended: number } & import('./types').TokenResponse>('/auth/me/password', {

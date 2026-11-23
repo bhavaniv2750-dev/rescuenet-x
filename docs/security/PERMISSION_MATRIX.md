@@ -101,10 +101,14 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | `GET /api/alerts/{alert_id}/cap` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/alerts/{alert_id}/resolve` | 401 | 403 | 403 | ✔ | ✔ | 403 | 403 | 403 |
 | `GET /api/auth/audit` | 401 | ✔ | 403 | ✔ | 403 | 403 | 403 | 403 |
+| `GET /api/auth/capabilities` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/login` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/logout-all` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/auth/me` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `PATCH /api/auth/me/contact` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/me/password` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/password/forgot` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/password/reset` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/auth/portals` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/register` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/auth/sessions` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
@@ -114,6 +118,10 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | `POST /api/auth/users` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
 | `PATCH /api/auth/users/{user_id}` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
 | `POST /api/auth/users/{user_id}/revoke-sessions` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
+| `POST /api/auth/verify/email/confirm` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/verify/email/request` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/verify/phone/confirm` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/verify/phone/request` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/dashboard` | 401 | ✔ | 403 | ✔ | ✔ | ✔ | 403 | 403 |
 | `GET /api/datasets/images` | 401 | ✔ | ✔ | ✔ | ✔ | 403 | 403 | 403 |
 | `GET /api/datasets/images/file/{filename}` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
@@ -121,6 +129,7 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | `POST /api/datasets/images/preprocess/{filename}` | 401 | ✔ | ✔ | ✔ | ✔ | 403 | 403 | 403 |
 | `GET /api/datasets/inventory` | 401 | ✔ | ✔ | ✔ | ✔ | 403 | 403 | 403 |
 | `GET /api/datasets/models` | 401 | ✔ | ✔ | ✔ | ✔ | 403 | 403 | 403 |
+| `GET /api/dev/outbox` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/diagnostics/` | 401 | ✔ | ✔ | 403 | 403 | 403 | 403 | 403 |
 | `GET /api/facilities/` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/facilities/` | 401 | 403 | 403 | ✔ | ✔ | 403 | 403 | 403 |

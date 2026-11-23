@@ -460,6 +460,10 @@ export interface AuthUser {
   role: Role;
   /** What this role may do. Informational: the API enforces it on every call. */
   permissions?: string[];
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  /** Temporary password: only the password-change screen works until this is cleared. */
+  password_change_required?: boolean;
   portal: PortalId | '';
   team_id?: string | null;
   volunteer_id?: string | null;
@@ -502,4 +506,22 @@ export interface RegisterPayload {
   email?: string;
   skills?: string;
   area?: string;
+}
+
+export interface Capabilities {
+  environment: 'development' | 'production';
+  email_delivery: { transport: 'DEV_OUTBOX' | 'SMTP' | 'DISABLED'; delivers_to_real_mailboxes: boolean };
+  sms_delivery: { transport: string; delivers_to_real_phones: boolean };
+  phone_verification_available: boolean;
+}
+
+export interface DevOutboxMessage {
+  id: number;
+  channel: string;
+  purpose: string;
+  to: string;
+  subject: string | null;
+  body: string | null;
+  created_at: string;
+  delivery_status: string;
 }

@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import type { PortalId, PortalInfo } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { cleanMessage } from '../../lib/toast';
+import { ForgotPassword } from './ForgotPassword';
 
 const PORTAL_TABS: { id: PortalId; label: string; hint: string; icon: React.ElementType }[] = [
   { id: 'public', label: 'Citizens & Volunteers', hint: 'Report a flood, get warnings, offer help', icon: Users },
@@ -19,7 +20,7 @@ interface Props {
 export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
   const { login, register } = useAuth();
   const [portal, setPortal] = useState<PortalId>('public');
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [info, setInfo] = useState<PortalInfo | null>(null);
 
   const [username, setUsername] = useState('');
@@ -118,6 +119,10 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
 
       <main className="login-panel">
         <div className="login-card">
+          {mode === 'forgot' ? (
+            <ForgotPassword onBack={() => setMode('signin')} />
+          ) : (
+            <>
           <h2>{signup ? 'Create your account' : 'Sign in'}</h2>
           <p className="login-sub">Choose how you use RescueNet.</p>
 
@@ -221,6 +226,11 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               Keep me signed in on this device (citizens and volunteers; staff sessions always end after a shift)
             </label>
+            {!signup && (
+              <button type="button" className="link-btn" onClick={() => { setMode('forgot'); setError(null); }}>
+                Forgot your password?
+              </button>
+            )}
 
             {error && (
               <div className="form-notice form-notice-error" role="alert">
@@ -267,6 +277,9 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
                 ))}
               </div>
             </div>
+          )}
+
+            </>
           )}
 
           <div className="login-guest">

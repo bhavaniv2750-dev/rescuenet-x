@@ -2,16 +2,63 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABEL } from '../../auth/access';
-import type { SessionInfo } from '../../api/types';
+import type { Capabilities, SessionInfo } from '../../api/types';
+import { DevOutbox } from '../Auth/DevOutbox';
 import { cleanMessage, toast } from '../../lib/toast';
 
 export const AccountView: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [code, setCode] = useState('');
+  const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [contactPw, setContactPw] = useState('');
+
+  useEffect(() => {
+    api.getCapabilities().then(setCaps).catch(() => undefined);
+  }, []);
+
+  const sendCode = async (channel: 'email' | 'phone') => {
+    try {
+      const r = await api.requestVerification(channel);
+      setVerifyNote(r.message);
+      setTick((t) => t + 1);
+    } catch (err) {
+      setVerifyNote(cleanMessage(err));
+    }
+  };
+
+  const confirmCode = async () => {
+    try {
+      await api.confirmVerification('email', code.trim());
+      setCode('');
+      setVerifyNote('Your email address is now verified.');
+      await refreshUser();
+    } catch (err) {
+      setVerifyNote(cleanMessage(err));
+    }
+  };
+
+  const saveContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const r = await api.changeContact({ current_password: contactPw, email: newEmail || undefined, phone: newPhone || undefined });
+      setVerifyNote(r.message);
+      setContactPw('');
+      setNewEmail('');
+      setNewPhone('');
+      await refreshUser();
+    } catch (err) {
+      setVerifyNote(cleanMessage(err));
+    }
+  };
 
   const loadSessions = useCallback(() => {
     api.getSessions().then((r) => setSessions(r.items)).catch(() => undefined);
@@ -109,6 +156,41 @@ export const AccountView: React.FC = () => {
           </form>
         </section>
       </div>
+
+      <section className="panel" style={{ marginTop: 16 }} aria-label="Contact verification">
+        <div className="panel-title-bar">
+          <div>
+            <h3>Contact details</h3>
+            <p>
+              A verified email address lets you recover your password. A changed address must be verified again.
+              {caps && caps.email_delivery.transport === 'DEV_OUTBOX' && ' This is a development server: codes are not sent to real mailboxes.'}
+              {caps && caps.email_delivery.transport === 'DISABLED' && ' This server has no email delivery configured, so email verification is unavailable.'}
+            </p>
+          </div>
+        </div>
+        <div className="kv-list">
+          {row('Email', user.email ? `${user.email} (${user.email_verified ? 'verified' : 'not verified'})` : 'none')}
+          {row('Phone', user.phone ? `${user.phone} (${user.phone_verified ? 'verified' : 'not verified'})` : 'none')}
+        </div>
+        {user.email && !user.email_verified && caps?.email_delivery.transport !== 'DISABLED' && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn-secondary" onClick={() => sendCode('email')}>Send a verification code</button>
+            <input className="select-input" placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" maxLength={12} aria-label="Verification code" />
+            <button className="btn-primary" disabled={code.trim().length < 4} onClick={confirmCode}>Verify</button>
+          </div>
+        )}
+        {user.phone && caps && !caps.phone_verification_available && (
+          <p className="text-xs text-muted" style={{ marginTop: 8 }}>Phone verification is not available: no SMS provider is configured, so your number stays unverified.</p>
+        )}
+        {verifyNote && <div className="form-notice form-notice-info" role="status" style={{ marginTop: 12 }}>{verifyNote}</div>}
+        <form onSubmit={saveContact} className="login-form" style={{ marginTop: 12 }}>
+          <label>New email address<input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" /></label>
+          <label>New phone number<input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} autoComplete="tel" /></label>
+          <label>Current password (required to change contact details)<input type="password" value={contactPw} onChange={(e) => setContactPw(e.target.value)} autoComplete="current-password" /></label>
+          <button className="btn-secondary" disabled={!contactPw || (!newEmail && !newPhone)}>Save contact details</button>
+        </form>
+        <DevOutbox refreshKey={tick} />
+      </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-title-bar">

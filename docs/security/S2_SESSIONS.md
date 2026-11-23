@@ -46,11 +46,11 @@ Owner-controlled invitation and recovery for privileged accounts need S3 (verifi
 Sessions lifecycle (34), rotation/replay/hash-only storage (11), CSRF (14), legacy tokens (12), production cookie attributes (5), no-secrets-in-logs (2), privileged escalation incl. recovery tool (31), session migration (3, inside test_migrations), stale access (9), plus the existing P0, S0 and S1 suites.
 
 ## Remaining risks and limitations
-1. **Break-glass password is seen by the host operator** who runs the tool, and the account owner is not forced to change it at first sign-in (no `must_change_password` yet). Mitigated by audit, out-of-band hand-over and S3/S5.
+1. **(Hardened in S3: forced password change, see S3_RECOVERY.md.) Break-glass password is seen by the host operator** who runs the tool, and the account owner is not forced to change it at first sign-in (no `must_change_password` yet). Mitigated by audit, out-of-band hand-over and S3/S5.
 2. **No MFA, verified contact or password recovery yet** (S3/S4). Stolen passwords still work until then; replay/revocation protects tokens, not credentials.
 3. **Compromise window**: a stolen access token works for up to 15 minutes unless the session is revoked (revocation is checked on every request, so revoked sessions fail at once). A stolen *unused* refresh cookie can be used until the owner refreshes first, after which replay detection ends the session (this is the designed outcome).
 4. **Replay detection is strict**: two simultaneous refreshes with the same cookie (two tabs at the same instant) look like theft and end the session. The frontend serialises refreshes across tabs with Web Locks; browsers without Web Locks can still race, at worst causing a re-login.
 5. **Development transport is http** (`SameSite=Lax`, no `Secure`); dev needs app and API on the same host name (127.0.0.1 or localhost, not mixed).
 6. **Same-origin reverse-proxy deployment is assumed**; configure `TRUSTED_ORIGINS` for anything else. Public deployment is not authorised yet.
-7. Rate limiting on refresh and login beyond the existing per-account lockout is not added (S3 adds general limits).
+7. (Done in S3: shared persistent rate limits on login, registration, verification, recovery and the guest endpoints.)
 8. Seeded demo accounts and the documented demo password still exist in development databases (S5).
