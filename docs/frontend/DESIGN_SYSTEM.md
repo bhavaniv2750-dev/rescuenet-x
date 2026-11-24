@@ -1,0 +1,8 @@
+# RescueNet X 2.0 design system (F0)
+
+Direction: deep navy/slate surfaces, one restrained teal accent, high-contrast data, no decorative gradients, glass effects or animated decoration.
+
+* **Tokens**: `src/design/tokens.css` (colour, type, spacing, radius, shadow, component sizes, focus ring, disabled state, severity, provenance); `src/design/tokens.ts` mirrors breakpoints (480/768/1024/1440), severity order/colours and provenance labels. The older stylesheets resolve their legacy variable names from these tokens.
+* **Components** (`src/components/ui`): Button, TextField/SelectField/SearchField (label, hint, error wired for assistive technology), DataTable (own scroll container, captioned), SeverityBadge (distinct icon shape + text label), StatusBadge, ProvenanceBadge (SIMULATED, HISTORICAL, OBSERVED, LIVE, STALE, UNAVAILABLE), Dialog and ConfirmDialog (focus trap, Escape, focus return), Tabs (arrow keys), Tooltip (keyboard accessible), EmptyState, ErrorState, Skeleton, Pagination, PageHeader/Panel, MapFrame (tile-unavailable notice). Tests: `ui.test.tsx`, `access.test.ts` (`npm test`).
+* **Local assets**: Inter and JetBrains Mono via `@fontsource`, Leaflet CSS from the `leaflet` package (marker assets bundled by Vite). No CDN is used for styling. The OpenStreetMap basemap tiles are still fetched from `tile.openstreetmap.org` at runtime (attribution kept); without internet the map shows overlays plus a clear notice. Full offline maps are not implemented.
+* **Rules**: severity is never colour alone; LIVE is used only where a source really updates; every control has a visible focus ring and a minimum 32 to 44 px target.

@@ -1,0 +1,72 @@
+/* RescueNet X 2.0 design tokens: the single source for colour, type, space, shape, elevation and state.
+   Direction: deep navy/slate surfaces, one restrained teal accent, high-contrast data, no decorative gradients.
+   Severity colours mean severity only (never decoration) and are always paired with an icon and a text label. */
+:root {
+  /* ---- surfaces (navy / slate) */
+  --rn-bg: #0a101c;            /* app background */
+  --rn-surface-1: #0f1727;     /* cards, panels */
+  --rn-surface-2: #152034;     /* raised: menus, inputs */
+  --rn-surface-3: #1c2a43;     /* hover, selected rows */
+  --rn-line: #26344f;          /* borders */
+  --rn-line-strong: #3a4c6e;
+
+  /* ---- text (WCAG AA on every surface above) */
+  --rn-text: #f1f5f9;          /* 15:1 on --rn-bg */
+  --rn-text-soft: #c3cede;     /* 10:1 */
+  --rn-text-dim: #93a4bd;      /* 6.5:1: use for secondary labels only */
+
+  /* ---- accent (one teal) and interaction */
+  --rn-accent: #22b8cf;
+  --rn-accent-strong: #0e90a8;
+  --rn-accent-soft: rgba(34, 184, 207, 0.14);
+  --rn-on-accent: #04202a;
+  --rn-focus: #7dd3fc;
+
+  /* ---- semantic states */
+  --rn-ok: #34d399;   --rn-ok-bg: rgba(52, 211, 153, 0.12);
+  --rn-warn: #fbbf24; --rn-warn-bg: rgba(251, 191, 36, 0.12);
+  --rn-danger: #f87171; --rn-danger-bg: rgba(248, 113, 113, 0.12);
+  --rn-info: #7dd3fc; --rn-info-bg: rgba(125, 211, 252, 0.12);
+
+  /* ---- incident / alert severity (distinct hue AND shape/label; see components/ui/Badges.tsx) */
+  --sev-critical: #ff6b6b; --sev-critical-bg: rgba(255, 107, 107, 0.16);
+  --sev-high: #ff9f43;     --sev-high-bg: rgba(255, 159, 67, 0.16);
+  --sev-moderate: #f7d046; --sev-moderate-bg: rgba(247, 208, 70, 0.14);
+  --sev-low: #6cb6ff;      --sev-low-bg: rgba(108, 182, 255, 0.14);
+
+  /* ---- data provenance */
+  --prov-simulated: #c4a5ff;  --prov-historical: #93a4bd;  --prov-observed: #34d399;
+  --prov-live: #22b8cf;       --prov-stale: #fbbf24;       --prov-unavailable: #f87171;
+
+  /* ---- typography */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --fs-xs: 0.75rem; --fs-sm: 0.8125rem; --fs-md: 0.9375rem; --fs-lg: 1.125rem; --fs-xl: 1.375rem; --fs-2xl: 1.75rem;
+  --lh-tight: 1.25; --lh-body: 1.5;
+
+  /* ---- spacing (4px scale) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+  /* ---- shape and elevation */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  /* ---- component dimensions */
+  --h-control: 40px; --h-control-sm: 32px; --h-topbar: 56px; --w-sidebar: 248px; --w-sidebar-collapsed: 64px;
+  --touch-min: 44px;
+
+  /* ---- states */
+  --focus-ring: 0 0 0 2px var(--rn-bg), 0 0 0 4px var(--rn-focus);
+  --disabled-opacity: 0.5;
+  /* Breakpoints (mirrored in design/tokens.ts): sm 480, md 768, lg 1024, xl 1440 */
+
+  /* ---- legacy variable names used by the existing stylesheets, now resolved from the tokens above */
+  --bg-core: var(--rn-bg); --bg-card: var(--rn-surface-1); --bg-card-elevated: var(--rn-surface-2); --bg-card-hover: var(--rn-surface-3);
+  --border-subtle: var(--rn-line); --border-focus: var(--rn-accent);
+  --text-main: var(--rn-text); --text-muted: var(--rn-text-dim); --text-dim: var(--rn-text-dim); --text-soft: var(--rn-text-soft);
+  --accent-cyan: var(--rn-accent); --accent-blue: var(--sev-low); --accent-emerald: var(--rn-ok); --accent-orange: var(--sev-high);
+  --accent-red: var(--sev-critical); --accent-yellow: var(--sev-moderate); --accent-pink: #f59ac8; --accent-purple: var(--prov-simulated);
+  --surface-1: var(--rn-surface-1); --surface-2: var(--rn-surface-2); --line: var(--rn-line);
+  --radius-sm: var(--r-sm); --radius-md: var(--r-md); --radius-lg: var(--r-lg); --ring: var(--focus-ring);
+}

@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import './index.css';
-import './theme.css';
 import { api } from './api/client';
 import type { Alert, DashboardData, Facility, Incident, RescueTeam, RiverGauge, Volunteer } from './api/types';
 import { AuthProvider, useAuth } from './auth/AuthContext';
