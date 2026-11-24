@@ -5,9 +5,9 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app.main import app
-from tests.conftest import sign_in
+from tests.conftest import DEMO_PASSWORD, sign_in
 
-PW = "Rescue@2026"
+PW = DEMO_PASSWORD
 
 
 def fresh(username=None):
@@ -187,5 +187,5 @@ def test_diagnostics_is_admin_only_and_reports_warnings():
     body = fresh("admin").get("/api/diagnostics/").json()
     assert body["database"]["tables"]["users"] >= 6
     assert body["flood_model"]["loaded"] is True
-    assert any("documented demo password" in w for w in body["warnings"])
+    assert any("development-fixture (demo) account" in w for w in body["warnings"])   # S5: no shared demo password exists; fixtures are flagged instead
     assert "jwt_secret_from_env" in body["auth"] and "secret" not in str(body["auth"]).lower().replace("jwt_secret_from_env", "")

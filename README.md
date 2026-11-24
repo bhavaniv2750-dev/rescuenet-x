@@ -74,10 +74,16 @@ The sign-in page has three portals. An account can only sign in through its own 
 
 Visitors can also continue **without signing in** to read warnings and shelters or report an emergency.
 
-**Demo accounts** (created while `SEED_DEMO_USERS=true`, password `Rescue@2026`):
-`citizen`, `volunteer`, `operator`, `officer`, `commander`, `admin`. The sign-in page shows shortcut buttons for them.
-**Turn demo mode off and remove these accounts before any real use.** With demo mode off, a single admin is created with
-`RESCUENET_ADMIN_PASSWORD`, or a random password printed once and saved to `backend/.admin_password`.
+**Accounts and onboarding (S5).** There are no built-in accounts and no default passwords.
+- Citizens and volunteers register themselves.
+- The first administrator is created once, on the server, by a person with shell access: `python scripts/bootstrap_admin.py --help`.
+- Every other staff, administrator or developer account is created by **invitation**: a server operator runs
+  `python scripts/account_admin.py invite ...` and hands over a one-time link; the owner chooses their own password, verifies their
+  email address and sets up two-step sign-in before the account can do anything (see `docs/security/S5_ACCOUNTS_AGENCIES.md`).
+- Development only: `SEED_DEMO_USERS=true` with `RESCUENET_ENV=development` creates **simulated** demo accounts on an empty
+  database, with the password you set in `DEMO_USER_PASSWORD` or a random one printed once to the console. Production refuses to
+  start with it on. Databases created by older versions contain demo accounts whose password was published in earlier releases:
+  disable them with `python scripts/disable_demo_accounts.py` (a dry run by default).
 
 Passwords are hashed with PBKDF2-SHA256, sessions use signed tokens, and an account locks for 5 minutes after 5 wrong passwords.
 

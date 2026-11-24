@@ -73,6 +73,7 @@ class UserOut(BaseModel):
     role: str
     portal: str = ""
     team_id: Optional[str] = None
+    agency_id: Optional[int] = None
     volunteer_id: Optional[str] = None
     volunteer_verified: Optional[bool] = None
     is_active: bool
@@ -174,21 +175,11 @@ def _check_password(pw: str) -> None:
 # ---------- public endpoints ----------
 @router.get("/portals")
 def list_portals():
-    # Demo credentials are a development-only convenience: never offered unless RESCUENET_ENV=development.
+    # No credentials and no account list are ever offered here (S5). `demo_mode` only tells the sign-in page to show a small
+    # "development fixtures" notice while explicitly enabled development fixtures are active.
     demo = settings.SEED_DEMO_USERS and settings.is_development
     return {
         "demo_mode": demo,
-        # Shown on the sign-in page only while demo accounts are enabled (development / project demo).
-        "demo_accounts": [
-            {"portal": ROLE_PORTAL[role], "username": username, "role": role, "label": label}
-            for username, label, role in [
-                ("citizen", "Citizen", "CITIZEN"), ("volunteer", "Volunteer", "VOLUNTEER"),
-                ("operator", "Control room operator", "OPERATOR"), ("officer", "Rescue officer", "RESCUE_OFFICER"),
-                ("commander", "Incident commander", "COMMANDER"), ("admin", "Administrator", "ADMIN"),
-                ("developer", "Developer (diagnostics only)", "DEVELOPER"),
-            ]
-        ] if demo else [],
-        "demo_password": settings.DEMO_USER_PASSWORD if demo else None,
         "portals": [
             {"id": "public", "name": "Citizens & Volunteers", "roles": PORTALS["public"], "self_signup": True},
             {"id": "operations", "name": "Rescue Operations Department", "roles": PORTALS["operations"], "self_signup": False},

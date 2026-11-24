@@ -23,7 +23,7 @@ ROLES = ["ADMIN", "DEVELOPER", "COMMANDER", "OPERATOR", "RESCUE_OFFICER", "VOLUN
 LOGIN = {"ADMIN": "admin", "DEVELOPER": "developer", "COMMANDER": "commander", "OPERATOR": "operator",
          "RESCUE_OFFICER": "officer", "VOLUNTEER": "volunteer", "CITIZEN": "citizen"}
 PLACEHOLDERS = {"session_id": "0" * 32, "incident_id": "INC-NOPE", "team_id": "TEAM-NOPE", "alert_id": "ALT-NOPE", "task_id": "TASK-NOPE",
-                "volunteer_id": "VOL-NOPE", "facility_id": "FAC-NOPE", "user_id": "999999", "filename": "nope.jpg",
+                "volunteer_id": "VOL-NOPE", "facility_id": "FAC-NOPE", "user_id": "999999", "agency_id": "999999", "invitation_id": "999999", "filename": "nope.jpg",
                 "asset_id": "0" * 32, "public_ref": "RN-0000-0000-0000"}
 
 OPS = {"COMMANDER", "OPERATOR"}
@@ -97,6 +97,17 @@ MUST_ALLOW = {
     ("POST", "/api/auth/logout-all"): SIGNED_IN,
     ("POST", "/api/auth/users/{user_id}/revoke-sessions"): {"ADMIN"},
     ("POST", "/api/auth/me/password"): SIGNED_IN,
+    # S5: agencies (organisational metadata) and invitations (privileged invitations are issued by a host operator, never here)
+    ("GET", "/api/agencies"): {"ADMIN"} | OPS,
+    ("GET", "/api/agencies/{agency_id}"): {"ADMIN"} | OPS,
+    ("POST", "/api/agencies"): {"ADMIN"},
+    ("PATCH", "/api/agencies/{agency_id}"): {"ADMIN"},
+    ("PUT", "/api/agencies/members/{user_id}"): {"ADMIN"},
+    ("PUT", "/api/agencies/teams/{team_id}"): {"ADMIN"},
+    ("GET", "/api/invitations"): {"ADMIN"},
+    ("POST", "/api/invitations/{invitation_id}/revoke"): {"ADMIN"},
+    ("POST", "/api/invitations/inspect"): PUBLIC,        # needs a currently usable single-use token; unusable ones answer 404
+    ("POST", "/api/invitations/accept"): PUBLIC,         # needs a currently usable single-use token; creates a RESTRICTED account
     # open by design: guest emergency reporting and tracking, public information, device intake, sign-in
     ("POST", "/api/incidents/"): PUBLIC,
     ("POST", "/api/incidents/upload-image"): PUBLIC,

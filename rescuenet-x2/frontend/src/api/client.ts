@@ -161,6 +161,11 @@ export const api = {
   register: (payload: import('./types').RegisterPayload) =>
     request<import('./types').TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   getMe: () => request<import('./types').AuthUser>('/auth/me'),
+  /** Invitations (S5). The token travels in the request body, never in a URL. Unusable invitations all answer the same 404. */
+  inspectInvitation: (token: string) =>
+    request<import('./types').InvitationPreview>('/invitations/inspect', { method: 'POST', body: JSON.stringify({ token }) }),
+  acceptInvitation: (payload: { token: string; username: string; full_name: string; password: string; phone?: string }) =>
+    request<import('./types').TokenResponse>('/invitations/accept', { method: 'POST', body: JSON.stringify(payload) }),
   getCapabilities: () => request<import('./types').Capabilities>('/auth/capabilities'),
   /** Always answers the same way; it never says whether an account exists. */
   forgotPassword: (identifier: string) =>

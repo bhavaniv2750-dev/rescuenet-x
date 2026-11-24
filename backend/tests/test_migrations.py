@@ -337,3 +337,86 @@ def test_0005_is_backed_up_first_and_the_backup_restores_the_pre_migration_state
     assert "mfa_credentials" not in tables and raw.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 5
     assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004"
     raw.close()
+
+
+# ---------------------------------------------------------------- S5: revision 0006 (agencies, invitations, activation flags)
+
+def _seed_pre_s5(engine):
+    """A database as S4 left it: privileged and public accounts (some with an unverified address), a team, MFA rows."""
+    migrations.upgrade(engine, "0005")
+    with engine.begin() as c:
+        for i, (name, role) in enumerate([("cmdr", "COMMANDER"), ("adm", "ADMIN"), ("offc", "RESCUE_OFFICER"), ("cit", "CITIZEN")], start=1):
+            c.execute(text("INSERT INTO users (id, username, full_name, role, email, password_hash, is_active, failed_logins, token_version, "
+                           "must_change_password, created_at) VALUES (:i,:n,:n,:r,:e,'hash-not-real',1,0,0,0,'2025-01-01')"),
+                      {"i": i, "n": name, "r": role, "e": f"{name}@example.org"})
+        c.execute(text("INSERT INTO rescue_teams (id, name, callsign, status, vehicle_type, members_count, skills, latitude, longitude, base_station, "
+                       "contact_number) VALUES ('T1','Team','Call','AVAILABLE','boat',4,'x',12.9,77.6,'base','100')"))
+        c.execute(text("INSERT INTO mfa_credentials (user_id, secret_enc, status, created_at) VALUES (1,'enc','ACTIVE','2025-01-01')"))
+
+
+def test_0006_adds_the_new_structures_and_changes_no_existing_account(engine):
+    _seed_pre_s5(engine)
+    migrations.upgrade(engine)
+    insp = inspect(engine)
+    assert {"agencies", "invitations"} <= set(insp.get_table_names())
+    ucols = {c["name"] for c in insp.get_columns("users")}
+    assert {"agency_id", "contact_verification_required", "contact_verification_waived_at", "is_demo"} <= ucols
+    assert "agency_id" in {c["name"] for c in insp.get_columns("rescue_teams")}
+    with engine.connect() as c:
+        rows = c.execute(text("SELECT username, role, password_hash, is_active, email, email_verified_at, contact_verification_required, "
+                              "contact_verification_waived_at, is_demo, agency_id FROM users ORDER BY id")).all()
+        assert [tuple(r) for r in rows] == [(n, r, "hash-not-real", 1, f"{n}@example.org", None, 0, None, 0, None)
+                                             for n, r in [("cmdr", "COMMANDER"), ("adm", "ADMIN"), ("offc", "RESCUE_OFFICER"), ("cit", "CITIZEN")]]
+        assert c.execute(text("SELECT COUNT(*) FROM agencies")).scalar() == 0 and c.execute(text("SELECT COUNT(*) FROM invitations")).scalar() == 0
+        assert c.execute(text("SELECT COUNT(*) FROM mfa_credentials")).scalar() == 1               # MFA enrolment untouched
+        assert c.execute(text("SELECT agency_id FROM rescue_teams")).scalar() is None
+    assert migrations.schema_drift(engine) == []                                                    # models and migration agree
+
+
+def test_0006_up_down_up_preserves_accounts_and_drops_only_the_new_structures(engine):
+    _seed_pre_s5(engine)
+    migrations.upgrade(engine)
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO agencies (name, agency_type, is_active, created_at, updated_at) VALUES ('A','FIRE_EMERGENCY',1,'2026-01-01','2026-01-01')"))
+        c.execute(text("UPDATE users SET agency_id=1, is_demo=1 WHERE id=1"))
+    migrations.downgrade(engine, "0005")
+    insp = inspect(engine)
+    assert not ({"agencies", "invitations"} & set(insp.get_table_names()))
+    assert not ({"agency_id", "is_demo", "contact_verification_required", "contact_verification_waived_at"} & {c["name"] for c in insp.get_columns("users")})
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM users")).scalar() == 4 and c.execute(text("SELECT COUNT(*) FROM rescue_teams")).scalar() == 1
+        assert c.execute(text("SELECT COUNT(*) FROM mfa_credentials")).scalar() == 1
+    migrations.upgrade(engine)
+    assert migrations.schema_drift(engine) == []
+
+
+def test_0006_is_backed_up_first_and_the_backup_restores_the_pre_migration_state(engine, tmp_path):
+    _seed_pre_s5(engine)
+    db_file = backup_mod.sqlite_path_from_url(str(engine.url))
+    migrations.ensure_schema(engine)
+    backups = sorted(settings.BACKUP_DIR.glob("*pre-migration*.db.bak"))
+    assert len(backups) == 1
+    manifest = backup_mod.verify_backup(backups[0])
+    assert manifest["table_row_counts"]["users"] == 4 and "agencies" not in manifest["table_row_counts"]
+    engine.dispose()
+    backup_mod.restore_backup(backups[0], db_file, settings.BACKUP_DIR)
+    raw = sqlite3.connect(db_file)
+    assert "agencies" not in {r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert raw.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 4
+    assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0005"
+    raw.close()
+
+
+def test_existing_privileged_accounts_keep_working_under_the_development_policy_and_need_verification_under_production_policy(engine, monkeypatch):
+    from sqlalchemy.orm import Session as OrmSession
+    from app.models.entities import User
+    from app.services import auth_state as astate
+    _seed_pre_s5(engine)
+    migrations.upgrade(engine)
+    with OrmSession(engine) as db:
+        cmdr = db.query(User).filter(User.username == "cmdr").one()
+        monkeypatch.setattr(settings, "PRIVILEGED_REQUIRE_VERIFIED_EMAIL", False)
+        assert not astate.contact_verification_pending(cmdr)
+        monkeypatch.setattr(settings, "PRIVILEGED_REQUIRE_VERIFIED_EMAIL", True)
+        assert astate.contact_verification_pending(cmdr)                      # unverified address: needs a code, or a host waiver
+        assert not astate.contact_verification_pending(db.query(User).filter(User.username == "cit").one())     # public roles: not required

@@ -21,6 +21,10 @@ import base64 as _b64, secrets as _sec
 os.environ.setdefault("MFA_ENCRYPTION_KEYS", "test:" + _b64.urlsafe_b64encode(_sec.token_bytes(32)).decode().rstrip("="))
 # Tests sign in as the same demo users hundreds of times; the production cap (10 sessions per user) is tested explicitly.
 os.environ.setdefault("MAX_SESSIONS_PER_USER", "100000")
+# S5: there is no built-in demo password. The development fixtures are created with a fresh random password for this run only.
+os.environ["SEED_DEMO_USERS"] = "true"
+DEMO_PASSWORD = "Dm1-" + _sec.token_urlsafe(12)
+os.environ["DEMO_USER_PASSWORD"] = DEMO_PASSWORD
 os.environ.setdefault("UPLOAD_DIR", str(Path(_TEST_DB_DIR) / "uploads"))
 os.environ.setdefault("BACKUP_DIR", str(Path(_TEST_DB_DIR) / "backups"))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}")
@@ -143,7 +147,7 @@ def sign_in(client, username: str = "commander", portal: str = None):
         db = SessionLocal(); uid = db.query(User).filter(User.username == username).one().id; db.close()
         if uid not in _MFA_SECRETS:
             enroll_mfa_directly(uid)
-    r = login_complete(client, portal or portals[username], username, "Rescue@2026")
+    r = login_complete(client, portal or portals[username], username, DEMO_PASSWORD)
     assert r.status_code == 200, r.text
     client.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
     return client
@@ -239,3 +243,18 @@ def enroll_via_api(client, password, headers=None):
     c = client.post("/api/auth/mfa/enroll/confirm", json={"code": totp_code(secret)}, headers=h)
     assert c.status_code == 200, c.text
     return secret, c.json()["recovery_codes"]
+
+
+# S5: production no longer creates any account by itself. Subprocess tests that need a production-mode administrator insert one
+# directly after start-up initialisation, exactly as a host operator's provisioning would leave it (password chosen by the test).
+PROD_TEST_ADMIN_PASSWORD = "Adm1n!Pass-for-test"
+PROD_TEST_JWT_SECRET = "p" * 48
+_PROD_ADMIN_SNIPPET = (
+    "\nfrom app.core.security import hash_password as _hp\nfrom app.db.session import SessionLocal as _SL\n"
+    "from app.models.entities import User as _U\n_db = _SL()\n"
+    "_db.add(_U(username='admin', full_name='Test Admin', role='ADMIN', password_hash=_hp('" + PROD_TEST_ADMIN_PASSWORD + "')))\n"
+    "_db.commit(); _db.close()\n")
+
+
+def with_prod_admin(script: str) -> str:
+    return script.replace("\ninit_db()\n", "\ninit_db()" + _PROD_ADMIN_SNIPPET, 1)

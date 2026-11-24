@@ -80,6 +80,8 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 |---|---|---|---|---|---|---|---|
 | `user.manage` | ✔ | – | – | – | – | – | – |
 | `audit.read` | ✔ | – | ✔ | – | – | – | – |
+| `agency.view` | ✔ | – | ✔ | ✔ | – | – | – |
+| `agency.manage` | ✔ | – | – | – | – | – | – |
 | `system.diagnostics` | ✔ | ✔ | – | – | – | – | – |
 
 ## 2. Endpoint × principal (observed by the test suite)
@@ -89,6 +91,12 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | Endpoint | Guest | Admin | Dev | Cmdr | Oper | Officer | Vol | Citizen |
 |---|---|---|---|---|---|---|---|---|
 | `GET /` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `GET /api/agencies` | 401 | ✔ | 403 | ✔ | ✔ | 403 | 403 | 403 |
+| `POST /api/agencies` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
+| `PUT /api/agencies/members/{user_id}` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
+| `PUT /api/agencies/teams/{team_id}` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
+| `GET /api/agencies/{agency_id}` | 401 | ✔ | 403 | ✔ | ✔ | 403 | 403 | 403 |
+| `PATCH /api/agencies/{agency_id}` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
 | `GET /api/agents/` | 401 | 403 | ✔ | ✔ | ✔ | 403 | 403 | 403 |
 | `GET /api/agents/supervisor/health` | 401 | 403 | ✔ | ✔ | ✔ | 403 | 403 | 403 |
 | `POST /api/agents/supervisor/triage` | 401 | 403 | 403 | ✔ | ✔ | 403 | 403 | 403 |
@@ -160,6 +168,10 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | `POST /api/incidents/{incident_id}/analyze-photo` | 401 | 403 | 403 | ✔ | ✔ | ✔ | 403 | 403 |
 | `GET /api/incidents/{incident_id}/history` | 401 | 403 | 403 | ✔ | ✔ | ✔ | 403 | 403 |
 | `POST /api/incidents/{incident_id}/state` | 401 | 403 | 403 | ✔ | ✔ | ✔ | 403 | 403 |
+| `GET /api/invitations` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
+| `POST /api/invitations/accept` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/invitations/inspect` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/invitations/{invitation_id}/revoke` | 401 | ✔ | 403 | 403 | 403 | 403 | 403 | 403 |
 | `GET /api/media/{asset_id}` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/public/reports` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/public/reports/{public_ref}` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |

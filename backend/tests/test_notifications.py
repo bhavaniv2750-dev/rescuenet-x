@@ -15,7 +15,7 @@ from app.db.session import SessionLocal
 from app.main import app
 from app.models.entities import NotificationOutbox
 from app.services import notifications as notif
-from tests.conftest import PORTAL_FOR_ROLE, latest_dev_message, make_user_with_email
+from tests.conftest import PORTAL_FOR_ROLE, latest_dev_message, make_user_with_email, with_prod_admin
 
 BACKEND = Path(__file__).resolve().parent.parent
 PW = "Str0ng!Passw0rd"
@@ -191,11 +191,10 @@ print(json.dumps({"verify": verify.status_code, "verify_detail": verify.json().g
 
 def run_prod(tmp_path, **env):
     base = {"PATH": "/usr/bin:/bin", "DATABASE_URL": f"sqlite:///{tmp_path / 'n.db'}", "UPLOAD_DIR": str(tmp_path / "up"),
-            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "test-secret-not-for-production-use-1234567890",
-            "MFA_ENCRYPTION_KEYS": __import__("os").environ["MFA_ENCRYPTION_KEYS"],
-            "RESCUENET_ADMIN_PASSWORD": "Adm1n!Pass-for-test"}
+            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "p" * 48,
+            "MFA_ENCRYPTION_KEYS": __import__("os").environ["MFA_ENCRYPTION_KEYS"]}
     base.update(env)
-    r = subprocess.run([sys.executable, "-c", PROD_SCRIPT], cwd=BACKEND, env=base, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", with_prod_admin(PROD_SCRIPT)], cwd=BACKEND, env=base, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-600:]
     return json.loads(r.stdout.strip().splitlines()[-1]), r
 

@@ -11,6 +11,8 @@ interface AuthState {
   login: (portal: PortalId, username: string, password: string, remember: boolean) => Promise<{ user: AuthUser } | { challenge: string; expiresIn: number }>;
   completeMfa: (challenge: string, input: { code?: string; recovery_code?: string }) => Promise<AuthUser>;
   register: (payload: RegisterPayload, remember: boolean) => Promise<AuthUser>;
+  /** Start using a session the server just issued (for example after accepting an invitation). */
+  adoptSession: (res: { access_token: string; csrf_token: string; expires_in: number; user: AuthUser }) => AuthUser;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -102,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  return <Ctx.Provider value={{ user, restoring, login, completeMfa, register, logout, refreshUser }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, restoring, login, completeMfa, register, adoptSession: adopt, logout, refreshUser }}>{children}</Ctx.Provider>;
 };
 
 export function useAuth(): AuthState {

@@ -29,6 +29,26 @@
     "VOLUNTEER": "allow",
     "anonymous": "allow"
   },
+  "GET /api/agencies": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "allow",
+    "DEVELOPER": "403",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "GET /api/agencies/{agency_id}": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "allow",
+    "DEVELOPER": "403",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
   "GET /api/agents/": {
     "ADMIN": "403",
     "CITIZEN": "403",
@@ -359,6 +379,16 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "GET /api/invitations": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
   "GET /api/media/{asset_id}": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -449,6 +479,16 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "PATCH /api/agencies/{agency_id}": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
   "PATCH /api/auth/me/contact": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -505,6 +545,16 @@
     "COMMANDER": "allow",
     "DEVELOPER": "403",
     "OPERATOR": "allow",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "POST /api/agencies": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
     "RESCUE_OFFICER": "403",
     "VOLUNTEER": "403",
     "anonymous": "401"
@@ -829,6 +879,36 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "POST /api/invitations/accept": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
+  "POST /api/invitations/inspect": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
+  "POST /api/invitations/{invitation_id}/revoke": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
   "POST /api/public/reports": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -905,6 +985,26 @@
     "COMMANDER": "allow",
     "DEVELOPER": "403",
     "OPERATOR": "allow",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "PUT /api/agencies/members/{user_id}": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
+    "RESCUE_OFFICER": "403",
+    "VOLUNTEER": "403",
+    "anonymous": "401"
+  },
+  "PUT /api/agencies/teams/{team_id}": {
+    "ADMIN": "allow",
+    "CITIZEN": "403",
+    "COMMANDER": "403",
+    "DEVELOPER": "403",
+    "OPERATOR": "403",
     "RESCUE_OFFICER": "403",
     "VOLUNTEER": "403",
     "anonymous": "401"

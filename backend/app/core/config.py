@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     DEBUG: bool = True
     
-    # CORS: Allow standard local Vite ports and loopback addresses
+    # CORS: the local Vite ports below are DEVELOPMENT conveniences. In production only origins named in CORS_ORIGINS_PRODUCTION
+    # (comma separated) are allowed; same-origin deployments need none.
+    CORS_ORIGINS_PRODUCTION: str = os.getenv("CORS_ORIGINS_PRODUCTION", "")
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -105,7 +107,14 @@ class Settings(BaseSettings):
     MFA_RECOVERY_FAILS_PER_ACCOUNT_HOUR: int = int(os.getenv("MFA_RECOVERY_FAILS_PER_ACCOUNT_HOUR", "5"))
     MFA_ENROLL_START_PER_ACCOUNT_HOUR: int = int(os.getenv("MFA_ENROLL_START_PER_ACCOUNT_HOUR", "6"))
     # Optional policy: privileged accounts must also have a verified email before operational access (state machine step).
-    PRIVILEGED_REQUIRE_VERIFIED_EMAIL: bool = os.getenv("PRIVILEGED_REQUIRE_VERIFIED_EMAIL", "false").lower() in ("1", "true", "yes")
+    # Default (S5): required in production, optional in development. Invited accounts are ALWAYS required to verify (per account).
+    PRIVILEGED_REQUIRE_VERIFIED_EMAIL: bool = os.getenv(
+        "PRIVILEGED_REQUIRE_VERIFIED_EMAIL",
+        "true" if os.getenv("RESCUENET_ENV", "production").strip().lower() == "production" else "false").lower() in ("1", "true", "yes")
+    # ---- Invitations (S5)
+    INVITATION_HOURS: int = int(os.getenv("INVITATION_HOURS", "72"))                # default lifetime; hard maximum 168 (7 days)
+    INVITE_ACCEPT_PER_IP_HOUR: int = int(os.getenv("INVITE_ACCEPT_PER_IP_HOUR", "20"))
+    INVITE_INSPECT_PER_IP_HOUR: int = int(os.getenv("INVITE_INSPECT_PER_IP_HOUR", "60"))
     # Host-level recovery: a password reset and an MFA reset of the same privileged account must be this far apart
     RECOVERY_COMBINATION_HOURS: int = int(os.getenv("RECOVERY_COMBINATION_HOURS", "24"))
 
@@ -129,14 +138,21 @@ class Settings(BaseSettings):
     # Extra browser origins (comma separated) allowed to call the cookie-authenticated endpoints, e.g. a reverse
     # proxy's public origin. Same-origin requests are always allowed.
     TRUSTED_ORIGINS: str = os.getenv("TRUSTED_ORIGINS", "")
-    # Demo accounts for every role (see README). Turn off for any real deployment.
-    SEED_DEMO_USERS: bool = os.getenv("SEED_DEMO_USERS", "true").lower() in ("1", "true", "yes")
-    DEMO_USER_PASSWORD: str = os.getenv("DEMO_USER_PASSWORD", "Rescue@2026")
-    ADMIN_PASSWORD: str = os.getenv("RESCUENET_ADMIN_PASSWORD", "")
+    # Development fixtures (S5). OFF by default. Demo accounts exist only when this is explicitly turned on AND
+    # RESCUENET_ENV=development; production refuses to start with it on. There is NO default password: use DEMO_USER_PASSWORD
+    # for a password of your choosing, otherwise a random one is printed once to the console when the fixtures are created.
+    SEED_DEMO_USERS: bool = os.getenv("SEED_DEMO_USERS", "false").lower() in ("1", "true", "yes")
+    DEMO_USER_PASSWORD: str = os.getenv("DEMO_USER_PASSWORD", "")
     # LoRa gateways are devices; when set, /api/incidents/lora requires this key in the X-Gateway-Key header.
     LORA_GATEWAY_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        if self.is_development:
+            return list(self.CORS_ORIGINS)
+        return [o.strip() for o in self.CORS_ORIGINS_PRODUCTION.split(",") if o.strip()]
 
     @property
     def smtp_configured(self) -> bool:

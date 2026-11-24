@@ -191,13 +191,13 @@ def test_cli_recovery_resets_password_ends_sessions_backs_up_and_audits():
 def test_cli_can_provision_a_staff_account_with_a_random_password():
     import uuid
     name = f"cli_{uuid.uuid4().hex[:8]}"
-    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned Commander",
-            "--reason", "new duty commander, ticket 42", "--i-am-authorized")
+    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned Commander", "--email", f"{name}@example.org",
+            "--reason", "new duty commander, ticket 42", "--i-am-authorized")      # S5: a privileged account needs --email
     assert r.returncode == 0, r.stderr
     pw = r.stdout.split("shown once, not stored anywhere in clear): ")[1].splitlines()[0].strip()
     assert can_login(name, pw, "COMMANDER")
-    assert cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Dup", "--reason", "duplicate attempt",
-               "--i-am-authorized").returncode == 1
+    assert cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Dup", "--email", f"{name}@example.org",
+               "--reason", "duplicate attempt", "--i-am-authorized").returncode == 1
 
 
 def test_cli_rejects_unknown_user_and_officer_without_team():

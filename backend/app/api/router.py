@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends
+from app.api.routes.agencies import router as agencies_router
 from app.api.routes.agents import router as agents_router
+from app.api.routes.invitations import router as invitations_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.dashboard import router as dashboard_router
@@ -29,6 +31,8 @@ api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[De
 api_router.include_router(flood_router, prefix="/flood", tags=["Flood"])
 api_router.include_router(incidents_router, prefix="/incidents", tags=["Incidents"])
 api_router.include_router(dev_router, prefix="/dev", tags=["Development only"])
+api_router.include_router(agencies_router, prefix="/agencies", tags=["Agencies"])
+api_router.include_router(invitations_router, prefix="/invitations", tags=["Invitations"])
 api_router.include_router(mfa_router, prefix="/auth/mfa", tags=["MFA"])
 api_router.include_router(media_router, prefix="/media", tags=["Evidence"])
 api_router.include_router(public_router, prefix="/public", tags=["Public"])

@@ -1,6 +1,8 @@
 {
   "ADMIN": [
     "account.own",
+    "agency.manage",
+    "agency.view",
     "alert.seen",
     "audit.read",
     "dashboard.view",
@@ -23,6 +25,7 @@
   ],
   "COMMANDER": [
     "account.own",
+    "agency.view",
     "alert.acknowledge_control",
     "alert.publish",
     "alert.resolve",
@@ -67,6 +70,7 @@
   ],
   "OPERATOR": [
     "account.own",
+    "agency.view",
     "alert.publish",
     "alert.resolve",
     "alert.seen",

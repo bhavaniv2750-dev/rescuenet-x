@@ -7,6 +7,8 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent
 
+from tests.conftest import with_prod_admin  # noqa: E402
+
 SCRIPT = r"""
 import json
 from fastapi.testclient import TestClient
@@ -22,11 +24,10 @@ print(json.dumps({"status": r.status_code, "cookies": r.headers.get_list("set-co
 
 def run(tmp_path, **env):
     base = {"PATH": "/usr/bin:/bin", "DATABASE_URL": f"sqlite:///{tmp_path / 'p.db'}", "UPLOAD_DIR": str(tmp_path / "up"),
-            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "test-secret-not-for-production-use-1234567890",
-            "MFA_ENCRYPTION_KEYS": __import__("os").environ["MFA_ENCRYPTION_KEYS"],
-            "RESCUENET_ADMIN_PASSWORD": "Adm1n!Pass-for-test"}
+            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "p" * 48,
+            "MFA_ENCRYPTION_KEYS": __import__("os").environ["MFA_ENCRYPTION_KEYS"]}
     base.update(env)
-    r = subprocess.run([sys.executable, "-c", SCRIPT], cwd=BACKEND, env=base, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", with_prod_admin(SCRIPT)], cwd=BACKEND, env=base, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-600:]
     return json.loads(r.stdout.strip().splitlines()[-1])
 

@@ -158,7 +158,8 @@ def test_recovery_never_changes_the_role_team_or_active_flag(role):
 
 def test_the_cli_cannot_be_used_to_create_a_privileged_account_without_going_through_the_flag():
     name = f"cli_{uuid.uuid4().hex[:8]}"
-    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned", "--reason", "new duty commander, ticket 7", "--i-am-authorized")
+    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned",
+            "--email", f"{name}@example.org", "--reason", "new duty commander, ticket 7", "--i-am-authorized")   # S5: --email is mandatory
     temp = temp_password(r.stdout)
     c, lr = login(name, temp, "COMMANDER")
     assert lr.json()["user"]["password_change_required"] is True

@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_permission
 from app.core.permissions import P, PRIVILEGED_ROLES
 from app.core.config import settings
-from app.core.security import verify_password
 from app.db.session import get_db
 from app.models.entities import Alert, AuditLog, Beacon, Facility, Incident, MfaCredential, RescueTeam, SupervisorTask, User, Volunteer
 
@@ -50,20 +49,16 @@ def diagnostics(db: Session = Depends(get_db)) -> Dict[str, Any]:
     }
 
     # ---- accounts
-    demo_names = ["admin", "commander", "operator", "officer", "volunteer", "citizen"]
-    still_demo = [
-        u.username for u in db.query(User).filter(User.username.in_(demo_names), User.is_active.is_(True)).all()
-        if verify_password(settings.DEMO_USER_PASSWORD, u.password_hash)
-    ]
-    if still_demo:
-        warnings.append(
-            f"{len(still_demo)} active accounts still use the documented demo password ({', '.join(still_demo)}). "
-            "Change their passwords or disable them in the Admin Console before any real use."
-        )
+    demo_active = db.query(func.count(User.id)).filter(User.is_demo.is_(True), User.is_active.is_(True)).scalar() or 0
+    if demo_active:
+        warnings.append(f"{demo_active} active development-fixture (demo) account(s) exist. They must not exist in a real deployment: "
+                        "run scripts/disable_demo_accounts.py (dry run first).")
     if settings.SEED_DEMO_USERS:
-        warnings.append("SEED_DEMO_USERS is on: demo accounts are created on an empty database.")
-    if not settings.JWT_SECRET:
-        warnings.append("JWT_SECRET is not set: a random secret is kept in backend/.jwt_secret. Set JWT_SECRET to keep sessions valid across machines.")
+        warnings.append("SEED_DEMO_USERS is on: simulated demo accounts are created on an empty development database.")
+    from app.services import startup_checks
+    for f in startup_checks.evaluate():
+        if f.level == startup_checks.WARNING:
+            warnings.append(f"{f.code}: {f.message}")
     if not settings.LORA_GATEWAY_KEY:
         warnings.append("LORA_GATEWAY_KEY is not set: anyone who can reach /api/incidents/lora can create SOS incidents.")
 

@@ -20,7 +20,7 @@ from app.main import app
 from app.models.entities import AuditLog, AuthSession, Incident, MfaCredential, MfaRecoveryCode, RescueTeam, User
 from app.services import auth_state as astate
 from app.services import mfa as mfa_svc
-from tests.conftest import (PORTAL_FOR_ROLE, _forget_replay, enroll_via_api, latest_dev_message, login_complete, make_team,
+from tests.conftest import (with_prod_admin, PORTAL_FOR_ROLE, _forget_replay, enroll_via_api, latest_dev_message, login_complete, make_team,
                             make_user, make_user_with_email, mfa_secret_of, sign_in, totp_code)
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -127,13 +127,21 @@ def test_break_glass_password_recovery_does_not_remove_mfa_or_skip_the_challenge
 
 def test_break_glass_created_staff_account_must_change_password_then_enrol_before_any_operations():
     name = "bg_" + os.urandom(4).hex()
-    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned", "--reason", "new duty commander, ticket 7", "--i-am-authorized")
+    # S5: --email is mandatory and the account must verify it BEFORE enrolling MFA (password -> contact -> MFA -> access)
+    r = cli("create", "--username", name, "--role", "COMMANDER", "--full-name", "Provisioned", "--email", f"{name}@example.org",
+            "--reason", "new duty commander, ticket 7", "--i-am-authorized")
     c, step = password_step(name, "COMMANDER", temp_of(r.stdout))
     assert step.json()["user"]["auth_state"] == "PASSWORD_CHANGE_PENDING"
     c.headers["Authorization"] = f"Bearer {step.json()['access_token']}"
     ch = c.post("/api/auth/me/password", json={"current_password": temp_of(r.stdout), "new_password": NEW})
-    assert ch.json()["user"]["auth_state"] == "MFA_ENROLLMENT_PENDING"
+    assert ch.json()["user"]["auth_state"] == "CONTACT_VERIFICATION_PENDING"
     c.headers["Authorization"] = f"Bearer {ch.json()['access_token']}"
+    assert c.get("/api/teams/").status_code == 403
+    uid = ch.json()["user"]["id"]
+    assert c.post("/api/auth/verify/email/request").status_code == 200
+    code = re.search(r"code is (\d{6})", latest_dev_message(uid, "EMAIL_VERIFY").body).group(1)
+    assert c.post("/api/auth/verify/email/confirm", json={"code": code}).status_code == 200
+    assert c.get("/api/auth/me").json()["auth_state"] == "MFA_ENROLLMENT_PENDING"
     assert c.get("/api/teams/").status_code == 403
     enroll_via_api(c, NEW)
     assert c.get("/api/teams/").status_code == 200
@@ -445,7 +453,7 @@ except Exception as e:
 
 def boot(tmp_path, **env):
     base = {"PATH": "/usr/bin:/bin", "DATABASE_URL": f"sqlite:///{tmp_path / 's.db'}", "UPLOAD_DIR": str(tmp_path / "up"),
-            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "test-secret-not-for-production-use-1234567890"}
+            "BACKUP_DIR": str(tmp_path / "bk"), "JWT_SECRET": "p" * 48}
     base.update(env)
     r = subprocess.run([sys.executable, "-c", START], cwd=BACKEND, env=base, capture_output=True, text=True)
     return json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {"started": False, "error": r.stderr[-200:]}
@@ -481,9 +489,10 @@ h = {"Authorization": "Bearer " + r.json()["access_token"]}
 print(json.dumps({"state": r.json()["user"]["auth_state"], "teams": c.get("/api/teams/", headers=h).status_code}))
 """
     env = {"PATH": "/usr/bin:/bin", "DATABASE_URL": f"sqlite:///{tmp_path / 'p.db'}", "UPLOAD_DIR": str(tmp_path / "up"), "BACKUP_DIR": str(tmp_path / "bk"),
-           "JWT_SECRET": "test-secret-not-for-production-use-1234567890", "RESCUENET_ENV": "production", "RESCUENET_ADMIN_PASSWORD": "Adm1n!Pass-for-test",
-           "MFA_ENCRYPTION_KEYS": "prod:" + mfa_crypto.new_key(), "MFA_ENFORCEMENT": "off", "MFA_DISABLED": "true", "MFA_BYPASS": "1", "SEED_DEMO_USERS": "true"}
-    out = subprocess.run([sys.executable, "-c", script], cwd=BACKEND, env=env, capture_output=True, text=True)
+           "JWT_SECRET": "p" * 48, "RESCUENET_ENV": "production",
+           "MFA_ENCRYPTION_KEYS": "prod:" + mfa_crypto.new_key(), "MFA_ENFORCEMENT": "off", "MFA_DISABLED": "true", "MFA_BYPASS": "1",
+           "PRIVILEGED_REQUIRE_VERIFIED_EMAIL": "false"}   # S5: production default is "true" (contact step first); off here to test the MFA step
+    out = subprocess.run([sys.executable, "-c", with_prod_admin(script)], cwd=BACKEND, env=env, capture_output=True, text=True)
     assert json.loads(out.stdout.strip().splitlines()[-1]) == {"state": "MFA_ENROLLMENT_PENDING", "teams": 403}
 
 

@@ -71,6 +71,8 @@ class P:
     # --- administration and development
     USER_MANAGE = "user.manage"
     AUDIT_READ = "audit.read"
+    AGENCY_VIEW = "agency.view"                    # S5: list agencies (organisational metadata)
+    AGENCY_MANAGE = "agency.manage"                # S5: create/edit agencies, assign personnel and squads to them
     SYSTEM_DIAGNOSTICS = "system.diagnostics"
 
 
@@ -92,7 +94,7 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
         P.INCIDENT_VIEW_ALL, P.INCIDENT_VERIFY, P.INCIDENT_EDIT_RISK,
         P.EVIDENCE_VIEW_ALL, P.EVIDENCE_ANALYZE,
         P.SUPERVISOR_VIEW, P.TRIAGE_RUN, P.TEAM_VIEW, P.TEAM_MANAGE, P.DISPATCH_ASSIGN, P.BEACON_VIEW,
-        P.ALERT_PUBLISH, P.ALERT_RESOLVE,
+        P.ALERT_PUBLISH, P.ALERT_RESOLVE, P.AGENCY_VIEW,
         P.VOLUNTEER_VIEW, P.VOLUNTEER_VERIFY, P.VOLUNTEER_MANAGE, P.FACILITY_MANAGE,
         P.RECORD_VIEW, P.RECORD_CREATE, P.DASHBOARD_VIEW, P.DATA_VIEW, P.VISION_ANALYZE,
     }),
@@ -103,11 +105,12 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
         P.ALERT_PUBLISH, P.ALERT_RESOLVE, P.ALERT_ACK_CONTROL,
         P.VOLUNTEER_VIEW, P.VOLUNTEER_VERIFY, P.VOLUNTEER_MANAGE, P.FACILITY_MANAGE,
         P.RECORD_VIEW, P.RECORD_CREATE, P.RECORD_EXPORT, P.DASHBOARD_VIEW, P.DATA_VIEW, P.VISION_ANALYZE,
-        P.AUDIT_READ,
+        P.AUDIT_READ, P.AGENCY_VIEW,
     }),
     # Identity and system management only. Deliberately no incident, evidence, dispatch, triage, approval or alert rights.
     "ADMIN": frozenset(_SIGNED_IN | {
         P.USER_MANAGE, P.AUDIT_READ, P.SYSTEM_DIAGNOSTICS, P.DASHBOARD_VIEW, P.DATA_VIEW, P.INCIDENT_DELETE,
+        P.AGENCY_VIEW, P.AGENCY_MANAGE,
     }),
     # Diagnostics only. No citizen data, no rescue controls.
     "DEVELOPER": frozenset(_SIGNED_IN | {P.SYSTEM_DIAGNOSTICS, P.DATA_VIEW, P.SUPERVISOR_VIEW}),
@@ -127,6 +130,7 @@ RESTRICTED: Dict[str, FrozenSet[str]] = {
     P.TRIAGE_RUN: frozenset({"COMMANDER", "OPERATOR"}),
     P.ALERT_PUBLISH: frozenset({"COMMANDER", "OPERATOR"}),
     P.USER_MANAGE: frozenset({"ADMIN"}),
+    P.AGENCY_MANAGE: frozenset({"ADMIN"}),
 }
 
 

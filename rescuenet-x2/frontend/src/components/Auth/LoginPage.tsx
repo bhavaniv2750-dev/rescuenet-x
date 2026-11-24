@@ -87,15 +87,7 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
     }
   };
 
-  const fillDemo = (u: string) => {
-    setUsername(u);
-    setPassword(info?.demo_password || '');
-    setMode('signin');
-    setError(null);
-  };
-
   const active = PORTAL_TABS.find((t) => t.id === portal)!;
-  const demos = (info?.demo_accounts || []).filter((d) => d.portal === portal);
   const signup = portal === 'public' && mode === 'signup';
 
   return (
@@ -275,21 +267,13 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
               )}
             </p>
           ) : (
-            <p className="login-switch muted">Department and admin accounts are created by an administrator.</p>
+            <p className="login-switch muted">Staff, administrator and developer accounts are created by invitation from a server operator.</p>
           )}
 
-          {info?.demo_mode && demos.length > 0 && mode === 'signin' && (
-            <div className="demo-box">
-              <strong>Demo accounts</strong>
-              <span>Tap one to fill in the form (password: {info.demo_password}).</span>
-              <div className="demo-chips">
-                {demos.map((d) => (
-                  <button key={d.username} type="button" className="chip" onClick={() => fillDemo(d.username)}>
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {info?.demo_mode && (
+            <p className="login-switch muted" role="note">
+              Development fixtures are enabled on this server: simulated demo accounts exist. Their password is not shown here.
+            </p>
           )}
 
             </>

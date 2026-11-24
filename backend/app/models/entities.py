@@ -132,6 +132,7 @@ class RescueTeam(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     base_station = Column(String(100), nullable=False)
+    agency_id = Column(Integer, nullable=True, index=True)   # S5: organisational metadata only
     contact_number = Column(String(50), nullable=False)
 
 
@@ -273,6 +274,53 @@ class User(Base):
     # Set by host-level recovery and admin resets of public accounts: only the password-change endpoints work until cleared
     must_change_password = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=utc_now)
+    # S5. Organisational METADATA (not a tenant boundary: see docs/security/S5_ACCOUNTS_AGENCIES.md)
+    agency_id = Column(Integer, nullable=True, index=True)
+    # S5. Accounts created from an invitation (or by the host tool) must prove control of their email address before any
+    # operational access. Existing accounts are NOT flagged by the migration; the production policy covers them. A host operator
+    # can waive the requirement for one account (recorded); a waiver never marks the address verified.
+    contact_verification_required = Column(Boolean, nullable=False, default=False, server_default="0")
+    contact_verification_waived_at = Column(DateTime, nullable=True)
+    # S5. Marks development-fixture accounts created by the seeder (simulated, never in production).
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="0")
+
+
+class Agency(Base):
+    """An organisation that personnel and squads belong to. Categories only: no real-world affiliation is implied by a type.
+    Agency is descriptive metadata. It is NOT an access boundary: permissions come from roles, and emergency coordination
+    works across agencies."""
+    __tablename__ = "agencies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(120), nullable=False, unique=True)
+    # DISASTER_RESPONSE | FIRE_EMERGENCY | MEDICAL_RESPONSE | CIVIL_ADMINISTRATION | VOLUNTEER_ORGANIZATION
+    agency_type = Column(String(30), nullable=False)
+    region = Column(String(120), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="1")
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    updated_at = Column(DateTime, nullable=False, default=utc_now)
+    created_by = Column(String(80), nullable=True)
+
+
+class Invitation(Base):
+    """Invitation to activate a privileged account. Only the SHA-256 of the random token is stored. Single use (claimed
+    atomically), expiring, revocable, bound to one recipient email, one role and optionally one agency and team."""
+    __tablename__ = "invitations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    role = Column(String(20), nullable=False)
+    recipient_email = Column(String(120), nullable=False, index=True)
+    agency_id = Column(Integer, nullable=True)
+    team_id = Column(String(50), nullable=True)
+    created_by = Column(String(80), nullable=False)          # "cli:<os user>" (host operator); never a web account
+    reason = Column(String(300), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    accepted_user_id = Column(Integer, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(String(80), nullable=True)
 
 
 class AuthSession(Base):

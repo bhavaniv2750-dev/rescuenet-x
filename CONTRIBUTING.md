@@ -49,7 +49,7 @@ npm run build
 ## Rules
 
 - **Do not force-push**, rewrite published history (rebase, amend, or filter published commits), or bypass branch protection or rulesets.
-- **Do not commit secrets or private data.** This includes `.env` files, passwords, tokens, `backend/.jwt_secret`, `backend/.admin_password`, local databases (`*.db`) that may hold real accounts or incidents, uploaded incident photos, and any private incident or personal records. These paths are already in `.gitignore`; check `git status` before committing. If a secret is committed by mistake, rotate it immediately and tell the maintainer.
+- **Do not commit secrets or private data.** This includes `.env` files, passwords, tokens, `backend/.jwt_secret`, `backend/.mfa_key`, local databases (`*.db`) that may hold real accounts or incidents, uploaded incident photos, and any private incident or personal records. These paths are already in `.gitignore`; check `git status` before committing. If a secret is committed by mistake, rotate it immediately and tell the maintainer.
 - **Keep the demo accounts for development only.** Turn `SEED_DEMO_USERS` off for any real deployment (see the README).
 - **Label data honestly** as OBSERVED, PREDICTED or SIMULATED, and do not present sample data as real.
 - **Do not change the dispatch approval rule** (commander approval for 5 or more people, or HIGH/CRITICAL severity) without discussion.

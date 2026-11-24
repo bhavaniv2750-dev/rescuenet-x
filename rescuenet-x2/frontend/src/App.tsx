@@ -33,6 +33,8 @@ import { MyWorkView } from './components/Views/MyWorkView';
 import { AccountView } from './components/Views/AccountView';
 import { AdminConsoleView } from './components/Views/AdminConsoleView';
 import { toast } from './lib/toast';
+import { AcceptInvitation } from './components/Auth/AcceptInvitation';
+import { ContactVerificationRequired } from './components/Auth/ContactVerificationRequired';
 
 const GUEST_KEY = 'rescuenet.guest';
 
@@ -48,6 +50,16 @@ function Shell() {
     try {
       const t = new URLSearchParams(window.location.search).get('reset');
       if (t) window.history.replaceState(null, '', window.location.pathname);
+      return t;
+    } catch {
+      return null;
+    }
+  });
+  // An invitation link opens the app as /#invite=TOKEN (the fragment is never sent to a server). Read once, then removed.
+  const [inviteToken, setInviteToken] = useState<string | null>(() => {
+    try {
+      const t = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('invite');
+      if (t) window.history.replaceState(null, '', window.location.pathname + window.location.search);
       return t;
     } catch {
       return null;
@@ -144,6 +156,10 @@ function Shell() {
     return <ResetPassword token={resetToken} onDone={() => setResetToken(null)} />;
   }
 
+  if (inviteToken && !user) {
+    return <AcceptInvitation token={inviteToken} onDone={() => setInviteToken(null)} />;
+  }
+
   if (restoring) {
     return (
       <div className="splash">
@@ -156,6 +172,9 @@ function Shell() {
   // operational screen. The server enforces the same rules on every request; this only avoids showing pages that would fail.
   if (user?.password_change_required || user?.auth_state === 'PASSWORD_CHANGE_PENDING') {
     return <ForcedPasswordChange />;
+  }
+  if (user?.auth_state === 'CONTACT_VERIFICATION_PENDING') {
+    return <ContactVerificationRequired />;
   }
   if (user?.auth_state === 'MFA_ENROLLMENT_PENDING') {
     return <MfaEnrollment mandatory userName={user.full_name} onDone={refreshUser} />;

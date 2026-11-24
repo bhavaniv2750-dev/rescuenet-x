@@ -22,7 +22,7 @@ GROUPS = [
     ("Alerts", ["alert.publish", "alert.resolve", "alert.acknowledge_control"]),
     ("Resources and records", ["volunteer.view", "volunteer.verify", "volunteer.manage", "facility.manage", "record.view", "record.create", "record.export"]),
     ("Information", ["dashboard.view", "data.view", "vision.analyze"]),
-    ("Administration and development", ["user.manage", "audit.read", "system.diagnostics"]),
+    ("Administration and development", ["user.manage", "audit.read", "agency.view", "agency.manage", "system.diagnostics"]),
 ]
 assert sorted(p for _, ps in GROUPS for p in ps) == sorted(ALL_PERMISSIONS), "a permission is missing from the document groups"
 

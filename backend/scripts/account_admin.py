@@ -20,6 +20,25 @@ a person with SHELL ACCESS TO THE SERVER, authorised separately from the applica
 * Password recovery NEVER removes enrolled MFA: the owner still completes their authenticator challenge (or, for a privileged
   account without MFA, enrols before any operational access).
 
+Invitations (S5): the way to onboard another ADMIN / DEVELOPER / COMMANDER / OPERATOR / RESCUE_OFFICER. The OWNER picks their
+own password, so nobody else ever knows it:
+
+    python scripts/account_admin.py invite --email jdoe@example.org --role OPERATOR [--agency-id 3] [--team-id TEAM-X] \
+        [--hours 72] [--send-email] --reason "new shift operator, ticket 123" --i-am-authorized
+    python scripts/account_admin.py list-invitations
+    python scripts/account_admin.py revoke-invitation --id 7 --reason "wrong recipient" --i-am-authorized
+
+* the one-time link is printed ONCE (only its SHA-256 is stored); hand it over out of band, or add --send-email (delivers only
+  if an email provider is configured; the outcome is reported honestly and a development outbox delivers nothing);
+* it is single use, expires (INVITATION_HOURS, max 168), is bound to that email address, role, agency and team, and can be revoked;
+* the invited account has NO permission until its owner verified the address (a code sent to it) and enrolled MFA.
+
+Existing privileged accounts that cannot verify an email address (no provider, or no address) are handled with
+
+    python scripts/account_admin.py waive-contact-verification --username jdoe --reason "..." --i-am-authorized
+
+which records the waiver in the audit log. It never marks an address verified and never touches MFA.
+
 Lost authenticator (privileged accounts included) is a separate, stricter procedure:
 
     python scripts/account_admin.py reset-mfa --username jdoe --reason "phone lost" \
@@ -48,7 +67,8 @@ from app.core.security import ROLE_PORTAL, hash_password, password_problem  # no
 from app.db import backup as backup_mod  # noqa: E402
 from app.db.migrations import ensure_schema  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.entities import AuditLog, AuthChallenge, RescueTeam, User  # noqa: E402
+from app.models.entities import Agency, AuditLog, AuthChallenge, Invitation, RescueTeam, User  # noqa: E402
+from app.services import provisioning as prov  # noqa: E402
 from app.services import mfa as mfa_svc  # noqa: E402
 from app.services import rate_limit  # noqa: E402
 from app.services import sessions as sess  # noqa: E402
@@ -58,11 +78,7 @@ from app.services.audit import record_audit  # noqa: E402
 PASSWORD_RECOVERY_ACTIONS = ("ACCOUNT_CLI_PASSWORD_RESET", "PASSWORD_RESET_COMPLETED", "USER_PASSWORD_RESET_BY_ADMIN")
 
 
-def one_time_password() -> str:
-    while True:
-        pw = secrets.token_urlsafe(14)
-        if password_problem(pw) is None:
-            return pw
+from app.services.provisioning import one_time_password  # noqa: E402
 
 
 def recent_recovery(db, user, actions) -> bool:
@@ -104,6 +120,64 @@ def reset_mfa(db, user, username, actor, args) -> int:
     return 0
 
 
+def invite(db, actor, args) -> int:
+    try:
+        inv, token = prov.issue_invitation(db, role=args.role, email=args.email, actor=actor, reason=args.reason,
+                                           agency_id=args.agency_id, team_id=args.team_id, hours=args.hours)
+    except prov.InvitationError as exc:
+        db.rollback()
+        print(f"Refused: {exc}", file=sys.stderr)
+        return 1
+    db.commit()
+    link = prov.invitation_link(token)
+    print(f"Invitation #{inv.id}: {inv.role} for {inv.recipient_email}, expires {inv.expires_at:%Y-%m-%d %H:%M} UTC.")
+    print(f"One-time link (shown once, not stored anywhere in clear): {link}")
+    print("Hand it to the recipient out of band. They choose their own password, verify the address, then set up MFA.")
+    if args.send_email:
+        from app.services import notifications as notif
+        row = notif.notify(notif.Message("EMAIL", inv.recipient_email, "Your RescueNet X invitation",
+                                         f"You have been invited to RescueNet X as {inv.role}. Open this one-time link to activate your account "
+                                         f"(it expires {inv.expires_at:%Y-%m-%d %H:%M} UTC):\n{link}\n", "INVITATION"))
+        print(f"Email: transport {row.transport}, status {row.delivery_status}. "
+              + ("Nothing was delivered to a mailbox." if row.transport != "SMTP" else "Accepted by the mail server; inbox delivery is not confirmed."))
+    return 0
+
+
+def list_invitations() -> int:
+    ensure_schema(engine)
+    db = SessionLocal()
+    try:
+        for inv in db.query(Invitation).order_by(Invitation.id.desc()).limit(100):
+            print(f"#{inv.id:<4} {prov.invitation_status(inv):<9} {inv.role:<15} {inv.recipient_email:<30} agency={inv.agency_id} "
+                  f"team={inv.team_id} expires {inv.expires_at:%Y-%m-%d %H:%M}Z by {inv.created_by}")
+        return 0
+    finally:
+        db.close()
+
+
+def revoke_invitation(db, actor, args) -> int:
+    inv = db.get(Invitation, args.id)
+    if inv is None:
+        print("Refused: no such invitation.", file=sys.stderr)
+        return 1
+    done = prov.revoke(db, inv, actor, "HOST_OPERATOR")
+    db.commit()
+    print("Revoked." if done else f"Nothing to do: the invitation is {prov.invitation_status(inv)}.")
+    return 0
+
+
+def waive_contact_verification(db, user, username, actor, args) -> int:
+    if user is None:
+        print(f"Refused: no account named '{username}'.", file=sys.stderr)
+        return 1
+    user.contact_verification_waived_at = prov._now()
+    record_audit(db, actor, "ACCOUNT_CLI_CONTACT_VERIFICATION_WAIVED", "user", user.id,
+                 f"{username} ({user.role}); email {'present, NOT verified' if user.email else 'absent'}; reason: {args.reason}"[:480], role="HOST_OPERATOR")
+    db.commit()
+    print(f"Contact verification waived for '{username}'. The address was NOT marked verified; MFA is still mandatory.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -112,6 +186,20 @@ def main() -> int:
     c.add_argument("--role", required=True, choices=ROLES)
     c.add_argument("--full-name", required=True)
     c.add_argument("--team-id")
+    c.add_argument("--email", help="REQUIRED for privileged roles: the address the owner must verify before any access")
+    c.add_argument("--agency-id", type=int)
+    iv = sub.add_parser("invite")
+    iv.add_argument("--email", required=True)
+    iv.add_argument("--role", required=True, choices=list(PRIVILEGED_ROLES))
+    iv.add_argument("--agency-id", type=int)
+    iv.add_argument("--team-id")
+    iv.add_argument("--hours", type=int)
+    iv.add_argument("--send-email", action="store_true")
+    sub.add_parser("list-invitations")
+    rv = sub.add_parser("revoke-invitation")
+    rv.add_argument("--id", type=int, required=True)
+    w = sub.add_parser("waive-contact-verification")
+    w.add_argument("--username", required=True)
     r = sub.add_parser("reset-password")
     r.add_argument("--username", required=True)
     m = sub.add_parser("reset-mfa")
@@ -119,10 +207,12 @@ def main() -> int:
     m.add_argument("--identity-verified", required=True, help="how the owner's identity was re-verified (recorded)")
     for p in (r, m):
         p.add_argument("--second-authorizer", help="name of a second authorised operator, to override the 24 h combination rule")
-    for p in (c, r, m):
+    for p in (c, r, m, iv, rv, w):
         p.add_argument("--reason", required=True, help="why this is needed (recorded in the audit log)")
         p.add_argument("--i-am-authorized", action="store_true", help="confirm you are authorised to do this on this server")
     args = ap.parse_args()
+    if args.cmd == "list-invitations":
+        return list_invitations()
     if not args.i_am_authorized or len(args.reason.strip()) < 8:
         print("Refused: pass --i-am-authorized and a --reason of at least 8 characters.", file=sys.stderr)
         return 2
@@ -136,12 +226,18 @@ def main() -> int:
             print(f"Backup written and verified: {bk.name}")
 
     actor = f"cli:{getpass.getuser()}"
-    username = args.username.strip().lower()
+    username = (getattr(args, "username", None) or "").strip().lower()
     db = SessionLocal()
     try:
+        if args.cmd == "invite":
+            return invite(db, actor, args)
+        if args.cmd == "revoke-invitation":
+            return revoke_invitation(db, actor, args)
         user = db.query(User).filter(User.username == username).first()
         if args.cmd == "reset-mfa":
             return reset_mfa(db, user, username, actor, args)
+        if args.cmd == "waive-contact-verification":
+            return waive_contact_verification(db, user, username, actor, args)
         if args.cmd == "reset-password" and user is not None and user.role in PRIVILEGED_ROLES and recent_recovery(db, user, ("ACCOUNT_CLI_MFA_RESET",)):
             if not override_ok(args, actor):
                 print(f"Refused: this privileged account's MFA was reset in the last {settings.RECOVERY_COMBINATION_HOURS} hours. "
@@ -156,8 +252,17 @@ def main() -> int:
             if args.role == "RESCUE_OFFICER" and not (args.team_id and db.query(RescueTeam).filter(RescueTeam.id == args.team_id).first()):
                 print("Refused: a rescue officer needs an existing --team-id.", file=sys.stderr)
                 return 1
-            user = User(username=username, full_name=args.full_name, role=args.role, team_id=args.team_id,
-                        password_hash=hash_password(password), must_change_password=True)
+            email = prov.ver.normalise_email(args.email) if args.email else None
+            if args.role in PRIVILEGED_ROLES and not (email and prov.EMAIL_RE.match(email)):
+                print("Refused: a privileged account needs --email (the owner must verify it before any access). "
+                      "Prefer 'invite', where the owner chooses their own password.", file=sys.stderr)
+                return 1
+            if args.agency_id is not None and not db.get(Agency, args.agency_id):
+                print("Refused: no such --agency-id.", file=sys.stderr)
+                return 1
+            user = User(username=username, full_name=args.full_name, role=args.role, team_id=args.team_id, email=email,
+                        agency_id=args.agency_id, password_hash=hash_password(password), must_change_password=True,
+                        contact_verification_required=args.role in PRIVILEGED_ROLES)
             db.add(user)
             db.flush()
             record_audit(db, actor, "ACCOUNT_CLI_CREATED", "user", user.id, f"{username} as {args.role}; reason: {args.reason}", role="HOST_OPERATOR")

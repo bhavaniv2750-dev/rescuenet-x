@@ -470,9 +470,19 @@ export interface AuthUser {
   auth_state?: string;
   portal: PortalId | '';
   team_id?: string | null;
+  agency_id?: number | null;
   volunteer_id?: string | null;
   volunteer_verified?: boolean | null;
   is_active: boolean;
+}
+
+export interface InvitationPreview {
+  role: Role;
+  agency: string | null;
+  /** Masked address the invitation was issued to. */
+  recipient: string;
+  expires_at: string;
+  steps: string[];
 }
 
 export interface TokenResponse {
@@ -497,8 +507,6 @@ export interface SessionInfo {
 
 export interface PortalInfo {
   demo_mode: boolean;
-  demo_accounts: { portal: PortalId; username: string; role: Role; label: string }[];
-  demo_password: string | null;
   portals: { id: PortalId; name: string; roles: Role[]; self_signup: boolean }[];
 }
 

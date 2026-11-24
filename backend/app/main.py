@@ -5,10 +5,12 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.db.init_db import init_db
 from app.db.migrations import MigrationError
-from app.services import mfa_crypto
+from app.services import mfa_crypto, startup_checks
 
 # Refuse to run with a missing/invalid MFA encryption configuration in production (and an invalid one anywhere).
 mfa_crypto.validate_configuration()
+# Refuse to run in production with an unsafe configuration (S5); warnings are printed, never hidden.
+startup_checks.enforce()
 
 
 @asynccontextmanager
@@ -35,8 +37,8 @@ app = FastAPI(
 # CORS: Allow local Vite dev servers on port 5173, 5174, etc.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):(517[0-9]|3000)",
+    allow_origins=settings.allowed_origins,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):(517[0-9]|3000)" if settings.is_development else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
