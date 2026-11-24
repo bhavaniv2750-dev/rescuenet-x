@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cleanMessage } from '../../lib/toast';
+import { Button } from '../ui';
+import { AuthHeading } from './AuthLayout';
 
 interface Props {
   /** Resolves on success, throws on a wrong/expired code. */
@@ -25,50 +27,32 @@ export const MfaChallenge: React.FC<Props> = ({ onSubmit, onCancel, expiresInSec
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await onSubmit(useRecovery ? { recovery_code: value.trim() } : { code: value.replace(/\s/g, '') });
-    } catch (err) {
-      setError(cleanMessage(err));
-      setValue('');
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true); setError(null);
+    try { await onSubmit(useRecovery ? { recovery_code: value.trim() } : { code: value.replace(/\s/g, '') }); }
+    catch (err) { setError(cleanMessage(err)); setValue(''); }
+    finally { setBusy(false); }
   };
 
   if (expired) {
     return (
-      <div role="alert">
-        <h2>Sign-in expired</h2>
-        <p className="login-sub">Too much time passed after your password. Please sign in again.</p>
-        <button className="btn-primary btn-block" onClick={onCancel}>Back to sign in</button>
+      <div role="alert" className="auth-form">
+        <AuthHeading title="Sign-in expired" sub="Too much time passed after your password. Please sign in again." />
+        <Button variant="primary" block onClick={onCancel}>Back to sign in</Button>
       </div>
     );
   }
 
   return (
-    <form onSubmit={submit} className="login-form" aria-labelledby="mfa-title">
-      <h2 id="mfa-title">{useRecovery ? 'Enter a recovery code' : 'Enter your authenticator code'}</h2>
-      <p className="login-sub">
-        {useRecovery
-          ? 'Use one of the recovery codes you saved when you set up two-step sign-in. Each code works once.'
-          : 'Open your authenticator app and type the 6-digit code for RescueNet X.'}
-      </p>
-      <label htmlFor="mfa-input">{useRecovery ? 'Recovery code' : '6-digit code'}</label>
-      <input
-        id="mfa-input"
-        ref={input}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        inputMode={useRecovery ? 'text' : 'numeric'}
-        autoComplete="one-time-code"
-        maxLength={useRecovery ? 24 : 8}
-        aria-describedby={error ? 'mfa-error' : undefined}
-        required
-      />
-      {error && <div id="mfa-error" className="form-notice form-notice-error" role="alert">{error}</div>}
-      <button className="btn-primary btn-block" disabled={busy || value.trim().length < 6}>{busy ? 'Checking…' : 'Verify and sign in'}</button>
+    <form onSubmit={submit} className="auth-form" aria-labelledby="mfa-title">
+      <AuthHeading id="mfa-title" title={useRecovery ? 'Enter a recovery code' : 'Enter your authenticator code'}
+        sub={useRecovery ? 'Use one of the recovery codes you saved when you set up two-step sign-in. Each code works once.' : 'Open your authenticator app and type the 6-digit code for RescueNet X.'} />
+      <div className="rn-field">
+        <label htmlFor="mfa-input">{useRecovery ? 'Recovery code' : '6-digit code'}</label>
+        <input id="mfa-input" ref={input} className="rn-input auth-mono" value={value} onChange={(e) => setValue(e.target.value)}
+          inputMode={useRecovery ? 'text' : 'numeric'} autoComplete="one-time-code" maxLength={useRecovery ? 24 : 8} aria-describedby={error ? 'mfa-error' : undefined} required />
+      </div>
+      {error && <div id="mfa-error" className="auth-notice auth-notice-error" role="alert">{error}</div>}
+      <Button type="submit" variant="primary" block loading={busy} disabled={value.trim().length < 6}>Verify and sign in</Button>
       <button type="button" className="link-btn" onClick={() => { setUseRecovery((v) => !v); setValue(''); setError(null); }}>
         {useRecovery ? 'Use my authenticator app instead' : 'I cannot use my authenticator: use a recovery code'}
       </button>

@@ -142,8 +142,8 @@ export const capUrl = (alertId: string) => `${API_BASE_URL}/alerts/${encodeURICo
 export const api = {
   // ---- authentication ----
   getPortals: () => request<import('./types').PortalInfo>('/auth/portals'),
-  login: (portal: string, username: string, password: string, remember = false) =>
-    request<import('./types').TokenResponse | import('./types').MfaChallengeResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password, remember }) }),
+  login: (username: string, password: string, remember = false) =>
+    request<import('./types').TokenResponse | import('./types').MfaChallengeResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal: 'auto', username, password, remember }) }),
   /** Second step of sign-in: an authenticator code or a recovery code, with the single-use challenge from the password step. */
   mfaVerify: (challenge_token: string, input: { code?: string; recovery_code?: string }) =>
     request<import('./types').TokenResponse>('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ challenge_token, ...input }) }),

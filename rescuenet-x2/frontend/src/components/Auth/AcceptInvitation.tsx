@@ -3,6 +3,8 @@ import { api } from '../../api/client';
 import type { InvitationPreview } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { cleanMessage } from '../../lib/toast';
+import { Button, TextField } from '../ui';
+import { AuthHeading, AuthLayout } from './AuthLayout';
 
 /** Opened from an invitation link (/#invite=TOKEN). The token lives in the URL fragment, which the browser never sends to a
  *  server; it is read once and removed from the address bar. The server tells us nothing unless the invitation is usable. */
@@ -39,55 +41,31 @@ export const AcceptInvitation: React.FC<{ token: string; onDone: () => void }> =
 
   if (invalid) {
     return (
-      <div className="login-panel">
-        <div className="login-card" role="alert">
-          <h2>This invitation cannot be used</h2>
-          <p className="login-sub">It is invalid, expired or already used. Ask the person who invited you for a new one.</p>
-          <button className="btn-primary btn-block" onClick={onDone}>Go to sign in</button>
+      <AuthLayout>
+        <div role="alert" className="auth-form">
+          <AuthHeading title="This invitation cannot be used" sub="It is invalid, expired or already used. Ask the person who invited you for a new one." />
+          <Button variant="primary" block onClick={onDone}>Go to sign in</Button>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
   if (!preview) {
     return <div className="splash"><div className="spinner" aria-label="Checking invitation" /></div>;
   }
   return (
-    <div className="login-panel">
-      <div className="login-card">
-        <h2>Activate your account</h2>
-        <p className="login-sub">
-          You are invited as <strong>{preview.role.replace('_', ' ').toLowerCase()}</strong>
-          {preview.agency ? <> with <strong>{preview.agency}</strong></> : null}, for <span data-sensitive>{preview.recipient}</span>.
-        </p>
-        <ol className="muted" style={{ margin: '0 0 12px 18px' }}>{preview.steps.map((s) => <li key={s}>{s}</li>)}</ol>
-        <form onSubmit={submit} className="login-form">
-          <label>
-            Username
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" pattern="[a-zA-Z0-9_.\-]{3,60}" required />
-          </label>
-          <label>
-            Full name
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} />
-          </label>
-          <label>
-            Choose your password
-            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required />
-            <span className="field-help">Only you will ever know it. At least 8 characters, mixing letters with numbers or symbols.</span>
-          </label>
-          <label>
-            Repeat password
-            <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" required />
-            {again && pw !== again && <span className="field-error">The two passwords do not match.</span>}
-          </label>
-          <label>
-            Phone (optional)
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
-          </label>
-          {error && <div className="form-notice form-notice-error" role="alert">{error}</div>}
-          <button className="btn-primary btn-block" disabled={busy || !username || !fullName || !pw || pw !== again}>{busy ? 'Creating…' : 'Create my account'}</button>
-          <button type="button" className="link-btn" onClick={onDone}>Cancel</button>
-        </form>
-      </div>
-    </div>
+    <AuthLayout wide>
+      <AuthHeading title="Activate your account" sub={<>You are invited as <strong>{preview.role.replace('_', ' ').toLowerCase()}</strong>{preview.agency ? <> with <strong>{preview.agency}</strong></> : null}, for <span data-sensitive>{preview.recipient}</span>.</>} />
+      <ol className="rn-field-hint" style={{ paddingLeft: 18, lineHeight: 1.7 }}>{preview.steps.map((st) => <li key={st}>{st}</li>)}</ol>
+      <form onSubmit={submit} className="auth-form">
+        <TextField label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" pattern="[a-zA-Z0-9_.\-]{3,60}" required hint="3 to 60 letters, numbers, dots, dashes or underscores." />
+        <TextField label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} />
+        <TextField label="Choose your password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required hint="Only you will ever know it. At least 8 characters, mixing letters with numbers or symbols." />
+        <TextField label="Repeat password" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" required error={again && pw !== again ? 'The two passwords do not match.' : null} />
+        <TextField label="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
+        {error && <div className="auth-notice auth-notice-error" role="alert">{error}</div>}
+        <Button type="submit" variant="primary" block loading={busy} disabled={!username || !fullName || !pw || pw !== again}>Create my account</Button>
+        <button type="button" className="link-btn" onClick={onDone}>Cancel</button>
+      </form>
+    </AuthLayout>
   );
 };

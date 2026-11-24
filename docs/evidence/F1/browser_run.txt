@@ -1,0 +1,30 @@
+login: desktop layout shows product name, no institution/academic text, no credentials, no demo shortcuts: true
+login: fields present = email/username, password, show-password, forgot, keep-signed-in, create account, guest report: 1,1,1,1,1,1,1
+login: password visibility control toggles field type: text
+login: mobile single column, horizontal overflow px: 0
+login: wrong password message: "Wrong username or password"
+register: citizen account created and signed in; navigation = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | Report Emergency | My Reports | My Account
+register: attempt to self-register a privileged role over the API: HTTP 422 (refused)
+register: volunteer account created; navigation = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | Report Emergency | My Reports | My Account
+email verification: code from the development outbox accepted, account shows verified: true
+reset: token removed from the address bar: true
+reset: Password changed. Every device was signed out; sign in with your new password.
+forced change: only the password-change screen is offered (no navigation rendered): true
+mfa enrolment: mandatory screen shown first, no navigation: true
+mfa enrolment: recovery codes shown once (10 codes, not recorded here); workspace opens: true
+mfa challenge: password accepted, no session yet, code required
+mfa challenge: wrong code message: "That code is not valid. Check that the clock on your phone is correct and try the newest code."
+recovery code: signed in with a recovery code: true
+recovery code: reuse refused: "That recovery code is not valid or was already used."
+session: after administrator revocation the sign-in page explains "Your session ended": true
+invitation: restricted activation, contact verification first; navigation rendered: false
+invitation: after verification MFA enrolment is mandatory: true
+
+console errors / failed requests observed:
+login: HTTP 401 POST /api/auth/login
+operator2: HTTP 401 POST /api/auth/mfa/verify
+operator3: HTTP 401 POST /api/auth/mfa/verify
+commander: HTTP 401 GET /api/teams/
+commander: HTTP 401 GET /api/incidents/
+commander: HTTP 401 GET /api/volunteers/
+commander: HTTP 401 GET /api/dashboard

@@ -47,7 +47,9 @@ USERNAME_PATTERN = r"^[a-zA-Z0-9_.\-]{3,60}$"
 
 # ---------- schemas ----------
 class LoginRequest(BaseModel):
-    portal: Literal["admin", "operations", "public"]
+    # "auto" (the default, F1): the portal is derived from the account's role AFTER the password was verified, so the sign-in form needs no
+    # portal choice. An explicit portal is still honoured (and refused for the wrong role) exactly as before.
+    portal: Literal["admin", "operations", "public", "auto"] = "auto"
     remember: bool = False   # "keep me signed in": longer session, honoured for citizens and volunteers only
     username: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=1, max_length=200)
@@ -228,7 +230,8 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise generic
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled. Contact an administrator.")
-    if user.role not in PORTALS[payload.portal]:
+    portal_id = ROLE_PORTAL.get(user.role, "public") if payload.portal == "auto" else payload.portal
+    if user.role not in PORTALS[portal_id]:
         portal = ROLE_PORTAL.get(user.role, "?")
         raise HTTPException(status_code=403, detail=f"This account signs in through the '{portal}' portal.")
     user.failed_logins = 0
@@ -237,14 +240,14 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         # The password alone never yields a session for an account with MFA: only a short-lived, single-purpose challenge.
         challenge = mfa_svc.issue_challenge(db, user, payload.remember)
         mfa_svc.purge_old_challenges(db)
-        record_audit(db, user.username, "LOGIN_PASSWORD_OK_MFA_PENDING", "user", user.id, f"portal {payload.portal}", role=user.role)
+        record_audit(db, user.username, "LOGIN_PASSWORD_OK_MFA_PENDING", "user", user.id, f"portal {portal_id}", role=user.role)
         db.commit()
         r = JSONResponse(content={"status": "mfa_required", "challenge_token": challenge,
                                   "expires_in": settings.MFA_CHALLENGE_SECONDS, "methods": ["totp", "recovery_code"]})
         r.headers["Cache-Control"] = "no-store"
         return r
     user.last_login_at = now
-    record_audit(db, user.username, "LOGIN", "user", user.id, f"portal {payload.portal}", role=user.role)
+    record_audit(db, user.username, "LOGIN", "user", user.id, f"portal {portal_id}", role=user.role)
     return start_session(db, user, request, response, payload.remember)
 
 

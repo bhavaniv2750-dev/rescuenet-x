@@ -234,7 +234,8 @@ function Shell() {
   }
 
   if (!user && !guest) {
-    return <LoginPage onContinueAsGuest={() => setGuestMode(true)} />;
+    return <LoginPage onContinueAsGuest={() => setGuestMode(true)}
+      onReportEmergency={() => { window.history.replaceState(null, '', '/public/report'); setGuestMode(true); }} />;
   }
 
   // The server's answer is not here yet (a guest's public workspace is being fetched): offer nothing rather than the wrong thing.

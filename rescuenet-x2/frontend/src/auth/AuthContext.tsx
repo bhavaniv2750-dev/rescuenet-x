@@ -1,14 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, refreshSession, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
-import type { AuthUser, PortalId, RegisterPayload } from '../api/types';
-import { toast } from '../lib/toast';
+import type { AuthUser, RegisterPayload } from '../api/types';
 
 interface AuthState {
   user: AuthUser | null;
   /** True while the saved session is being checked on page load. */
   restoring: boolean;
+  /** True after a session ended on its own (expired, revoked, role changed): the sign-in page says so. Cleared by the next sign-in. */
+  sessionEnded: boolean;
   /** Either a signed-in user, or a challenge: the account has MFA and still owes a code (no session exists yet). */
-  login: (portal: PortalId, username: string, password: string, remember: boolean) => Promise<{ user: AuthUser } | { challenge: string; expiresIn: number }>;
+  login: (username: string, password: string, remember: boolean) => Promise<{ user: AuthUser } | { challenge: string; expiresIn: number }>;
   completeMfa: (challenge: string, input: { code?: string; recovery_code?: string }) => Promise<AuthUser>;
   register: (payload: RegisterPayload, remember: boolean) => Promise<AuthUser>;
   /** Start using a session the server just issued (for example after accepting an invitation). */
@@ -23,6 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   // Always true on first load: the session is restored from the HttpOnly refresh cookie, not from browser storage.
   const [restoring, setRestoring] = useState<boolean>(true);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   const clearTimer = () => {
@@ -73,21 +75,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const onUnauthorized = () => {
       if (!tokenStore.get() && !user) return;
       endLocalSession();
-      toast.info('Your session ended. Please sign in again.');
+      setSessionEnded(true);
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, [endLocalSession, user]);
 
   const adopt = (res: { access_token: string; csrf_token: string; expires_in: number; user: AuthUser }) => {
+    setSessionEnded(false);
     tokenStore.set(res.access_token, res.csrf_token);
     setUser(res.user);
     scheduleRefresh(res.expires_in);
     return res.user;
   };
 
-  const login: AuthState['login'] = async (portal, username, password, remember) => {
-    const res = await api.login(portal, username.trim(), password, remember);
+  const login: AuthState['login'] = async (username, password, remember) => {
+    const res = await api.login(username.trim(), password, remember);
     if (res.status === 'mfa_required') return { challenge: res.challenge_token, expiresIn: res.expires_in };
     return { user: adopt(res) };
   };
@@ -104,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  return <Ctx.Provider value={{ user, restoring, login, completeMfa, register, adoptSession: adopt, logout, refreshUser }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, restoring, sessionEnded, login, completeMfa, register, adoptSession: adopt, logout, refreshUser }}>{children}</Ctx.Provider>;
 };
 
 export function useAuth(): AuthState {

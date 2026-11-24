@@ -189,3 +189,28 @@ def test_diagnostics_is_admin_only_and_reports_warnings():
     assert body["flood_model"]["loaded"] is True
     assert any("development-fixture (demo) account" in w for w in body["warnings"])   # S5: no shared demo password exists; fixtures are flagged instead
     assert "jwt_secret_from_env" in body["auth"] and "secret" not in str(body["auth"]).lower().replace("jwt_secret_from_env", "")
+
+
+# ---- F1: the sign-in form no longer asks for a portal ("auto" derives it from the verified account)
+
+def test_login_without_a_portal_signs_each_role_in_and_still_requires_the_password():
+    for username in ("citizen", "volunteer"):
+        r = TestClient(app).post("/api/auth/login", json={"username": username, "password": PW})
+        assert r.status_code == 200, (username, r.text)
+    for username in ("citizen", "commander", "admin"):
+        bad = TestClient(app).post("/api/auth/login", json={"username": username, "password": "wrong-password-1"})
+        assert bad.status_code == 401
+        assert bad.json()["detail"] == "Wrong username or password"          # same generic answer, no portal or role hint
+
+
+def test_login_auto_portal_leaves_privileged_accounts_behind_mfa():
+    r = TestClient(app).post("/api/auth/login", json={"username": "commander", "password": PW, "portal": "auto"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("status") == "mfa_required" or body["user"]["auth_state"] == "MFA_ENROLLMENT_PENDING"
+    assert body.get("user", {}).get("permissions", []) == []
+
+
+def test_an_explicit_wrong_portal_is_still_refused():
+    r = TestClient(app).post("/api/auth/login", json={"portal": "admin", "username": "citizen", "password": PW})
+    assert r.status_code == 403 and "public" in r.json()["detail"]
