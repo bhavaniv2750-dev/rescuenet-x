@@ -120,6 +120,7 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
                   <th>ROLE</th>
                   <th>TEAM / VOLUNTEER</th>
                   <th>STATUS</th>
+                  <th>MFA</th>
                   <th>ACTIONS</th>
                 </tr>
               </thead>
@@ -135,6 +136,9 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
                     <td className="font-mono text-xs">{u.team_id || u.volunteer_id || '—'}</td>
                     <td>
                       <span className={`status-pill ${u.is_active ? 'pill-active' : 'pill-muted'}`}>{u.is_active ? 'ACTIVE' : 'DISABLED'}</span>
+                    </td>
+                    <td>
+                      <span className="text-xs">{u.mfa_enabled ? 'On' : u.mfa_required ? 'Required, not set up' : 'Off'}</span>
                     </td>
                     <td>
                       <div className="action-button-group">

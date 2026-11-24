@@ -117,7 +117,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, retried =
     } catch {
       detail = errorBody || detail;
     }
-    throw new ApiError(response.status, typeof detail === 'string' ? detail : JSON.stringify(detail));
+    throw new ApiError(response.status, typeof detail === 'string' ? detail : JSON.stringify(detail), response.headers.get('x-mfa-reauth-required') === 'true');
   }
 
   return response.json();
@@ -125,9 +125,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}, retried =
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** True when the server wants a fresh authenticator code before this sensitive action (X-MFA-Reauth-Required). */
+  reauth: boolean;
+  constructor(status: number, message: string, reauth = false) {
     super(message);
     this.status = status;
+    this.reauth = reauth;
   }
 }
 
@@ -138,7 +141,18 @@ export const api = {
   // ---- authentication ----
   getPortals: () => request<import('./types').PortalInfo>('/auth/portals'),
   login: (portal: string, username: string, password: string, remember = false) =>
-    request<import('./types').TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password, remember }) }),
+    request<import('./types').TokenResponse | import('./types').MfaChallengeResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ portal, username, password, remember }) }),
+  /** Second step of sign-in: an authenticator code or a recovery code, with the single-use challenge from the password step. */
+  mfaVerify: (challenge_token: string, input: { code?: string; recovery_code?: string }) =>
+    request<import('./types').TokenResponse>('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ challenge_token, ...input }) }),
+  mfaStatus: () => request<import('./types').MfaStatus>('/auth/mfa/status'),
+  mfaEnrollStart: (current_password: string) =>
+    request<import('./types').MfaEnrollStart>('/auth/mfa/enroll/start', { method: 'POST', body: JSON.stringify({ current_password }) }),
+  mfaEnrollConfirm: (code: string) =>
+    request<{ enabled: boolean; recovery_codes: string[]; instructions: string }>('/auth/mfa/enroll/confirm', { method: 'POST', body: JSON.stringify({ code }) }),
+  mfaReauth: (code: string) => request<{ fresh_for_minutes: number }>('/auth/mfa/reauth', { method: 'POST', body: JSON.stringify({ code }) }),
+  mfaDisable: (current_password: string) => request<{ enabled: boolean }>('/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ current_password }) }),
+  regenerateRecoveryCodes: () => request<{ recovery_codes: string[]; instructions: string }>('/auth/mfa/recovery-codes/regenerate', { method: 'POST' }),
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': readCookie('rn_csrf') || csrfToken || '' } }),
   logoutAll: () => request<{ message: string; sessions_ended: number }>('/auth/logout-all', { method: 'POST' }),
   getSessions: () => request<{ items: import('./types').SessionInfo[]; count: number }>('/auth/sessions'),

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABEL } from '../../auth/access';
-import type { Capabilities, SessionInfo } from '../../api/types';
+import type { Capabilities, MfaStatus, SessionInfo } from '../../api/types';
+import { MfaEnrollment } from '../Auth/MfaEnrollment';
 import { DevOutbox } from '../Auth/DevOutbox';
 import { cleanMessage, toast } from '../../lib/toast';
 
@@ -14,6 +15,68 @@ export const AccountView: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [mfa, setMfa] = useState<MfaStatus | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [newCodes, setNewCodes] = useState<string[] | null>(null);
+  const [mfaNote, setMfaNote] = useState<string | null>(null);
+  const [disablePw, setDisablePw] = useState('');
+  // Sensitive actions need a RECENT second factor. When the server asks (X-MFA-Reauth-Required) we show a code prompt, then retry.
+  const [reauth, setReauth] = useState<{ retry: () => Promise<void> } | null>(null);
+  const [reauthCode, setReauthCode] = useState('');
+  const [reauthError, setReauthError] = useState<string | null>(null);
+
+  const loadMfa = useCallback(() => {
+    api.mfaStatus().then(setMfa).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    loadMfa();
+  }, [loadMfa]);
+
+  /** If the server wants a fresh authenticator code, remember what to retry afterwards and return true. */
+  const handleError = (err: unknown, retry: () => Promise<void>): boolean => {
+    if (err instanceof ApiError && err.reauth) {
+      setReauthError(null);
+      setReauthCode('');
+      setReauth({ retry });
+      return true;
+    }
+    return false;
+  };
+
+  const submitReauth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.mfaReauth(reauthCode.replace(/\s/g, ''));
+      const again = reauth?.retry;
+      setReauth(null);
+      if (again) await again();
+    } catch (err) {
+      setReauthError(cleanMessage(err));
+      setReauthCode('');
+    }
+  };
+
+  const regenerate = async () => {
+    try {
+      const r = await api.regenerateRecoveryCodes();
+      setNewCodes(r.recovery_codes);
+      loadMfa();
+    } catch (err) {
+      if (!handleError(err, regenerate)) setMfaNote(cleanMessage(err));
+    }
+  };
+
+  const disableMfa = async () => {
+    try {
+      await api.mfaDisable(disablePw);
+      setDisablePw('');
+      setMfaNote('Two-step sign-in is turned off.');
+      loadMfa();
+      await refreshUser();
+    } catch (err) {
+      if (!handleError(err, disableMfa)) setMfaNote(cleanMessage(err));
+    }
+  };
   const [code, setCode] = useState('');
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -56,7 +119,7 @@ export const AccountView: React.FC = () => {
       setNewPhone('');
       await refreshUser();
     } catch (err) {
-      setVerifyNote(cleanMessage(err));
+      if (!handleError(err, () => saveContact(e))) setVerifyNote(cleanMessage(err));
     }
   };
 
@@ -83,7 +146,7 @@ export const AccountView: React.FC = () => {
       setNext('');
       setAgain('');
     } catch (err) {
-      toast.error(cleanMessage(err));
+      if (!handleError(err, () => change(e))) toast.error(cleanMessage(err));
     } finally {
       setBusy(false);
     }
@@ -156,6 +219,52 @@ export const AccountView: React.FC = () => {
           </form>
         </section>
       </div>
+
+      {reauth && (
+        <form onSubmit={submitReauth} className="panel" style={{ marginTop: 16 }} aria-label="Confirm with your authenticator" role="alertdialog">
+          <h3>Confirm it is you</h3>
+          <p className="text-xs text-muted">This is a sensitive action. Enter the current 6-digit code from your authenticator app.</p>
+          <input className="select-input" value={reauthCode} onChange={(e) => setReauthCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" maxLength={8} aria-label="Authenticator code" autoFocus />{' '}
+          <button className="btn-primary" disabled={reauthCode.replace(/\s/g, '').length < 6}>Confirm</button>{' '}
+          <button type="button" className="btn-secondary" onClick={() => setReauth(null)}>Cancel</button>
+          {reauthError && <div className="form-notice form-notice-error" role="alert" style={{ marginTop: 8 }}>{reauthError}</div>}
+        </form>
+      )}
+
+      <section className="panel" style={{ marginTop: 16 }} aria-label="Two-step sign-in">
+        <div className="panel-title-bar">
+          <div>
+            <h3>Two-step sign-in</h3>
+            <p>{mfa?.required ? 'Required for your role.' : 'Optional for your role: adds a code from your phone to your password.'}</p>
+          </div>
+        </div>
+        <div className="kv-list">
+          {row('Status', mfa ? (mfa.enabled ? 'On' : 'Off') : '…')}
+          {mfa?.enabled && row('Recovery codes left', String(mfa.recovery_codes_remaining))}
+        </div>
+        {mfa && !mfa.enabled && !enrolling && <button className="btn-primary" onClick={() => setEnrolling(true)}>Set up two-step sign-in</button>}
+        {enrolling && <MfaEnrollment userName={user.full_name} onCancel={() => setEnrolling(false)} onDone={async () => { setEnrolling(false); loadMfa(); await refreshUser(); }} />}
+        {mfa?.enabled && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+            <button className="btn-secondary" onClick={regenerate}>Generate new recovery codes</button>
+            {mfa.can_disable && (
+              <>
+                <input className="select-input" type="password" placeholder="Current password" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} aria-label="Current password to turn two-step sign-in off" autoComplete="current-password" />
+                <button className="btn-secondary" disabled={!disablePw} onClick={disableMfa}>Turn off</button>
+              </>
+            )}
+          </div>
+        )}
+        {mfa?.enabled && !mfa.can_disable && <p className="text-xs text-muted">Two-step sign-in cannot be turned off for your role. If you lose your authenticator, a server operator can reset it after verifying your identity.</p>}
+        {newCodes && (
+          <div className="form-notice form-notice-info" role="status" style={{ marginTop: 8 }}>
+            <strong>New recovery codes (shown once; the old ones no longer work). Store them offline.</strong>
+            <ul data-sensitive className="font-mono" style={{ columns: 2, listStyle: 'none', padding: 0 }}>{newCodes.map((c) => <li key={c}>{c}</li>)}</ul>
+            <button className="btn-secondary" onClick={() => setNewCodes(null)}>I have stored them</button>
+          </div>
+        )}
+        {mfaNote && <div className="form-notice form-notice-info" role="status" style={{ marginTop: 8 }}>{mfaNote}</div>}
+      </section>
 
       <section className="panel" style={{ marginTop: 16 }} aria-label="Contact verification">
         <div className="panel-title-bar">

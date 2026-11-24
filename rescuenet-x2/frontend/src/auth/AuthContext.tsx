@@ -7,7 +7,9 @@ interface AuthState {
   user: AuthUser | null;
   /** True while the saved session is being checked on page load. */
   restoring: boolean;
-  login: (portal: PortalId, username: string, password: string, remember: boolean) => Promise<AuthUser>;
+  /** Either a signed-in user, or a challenge: the account has MFA and still owes a code (no session exists yet). */
+  login: (portal: PortalId, username: string, password: string, remember: boolean) => Promise<{ user: AuthUser } | { challenge: string; expiresIn: number }>;
+  completeMfa: (challenge: string, input: { code?: string; recovery_code?: string }) => Promise<AuthUser>;
   register: (payload: RegisterPayload, remember: boolean) => Promise<AuthUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -82,8 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res.user;
   };
 
-  const login: AuthState['login'] = async (portal, username, password, remember) =>
-    adopt(await api.login(portal, username.trim(), password, remember));
+  const login: AuthState['login'] = async (portal, username, password, remember) => {
+    const res = await api.login(portal, username.trim(), password, remember);
+    if (res.status === 'mfa_required') return { challenge: res.challenge_token, expiresIn: res.expires_in };
+    return { user: adopt(res) };
+  };
+
+  const completeMfa: AuthState['completeMfa'] = async (challenge, input) => adopt(await api.mfaVerify(challenge, input));
 
   const register: AuthState['register'] = async (payload) => adopt(await api.register(payload));
 
@@ -95,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  return <Ctx.Provider value={{ user, restoring, login, register, logout, refreshUser }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, restoring, login, completeMfa, register, logout, refreshUser }}>{children}</Ctx.Provider>;
 };
 
 export function useAuth(): AuthState {

@@ -1,0 +1,30 @@
+commander: enrolment screen shown first; operational navigation visible: false
+commander: operations workspace after enrolment: true
+commander: MFA status panel: Two-step sign-in | Required for your role. | Status | On | Recovery codes left | 10 | Generate new recovery codes | Two-step sign-in cannot be turned off for yo
+commander: wrong code message: That code is not valid. Check that the clock on your phone is correct and try the newest code.
+commander: signed in after the correct code: true
+commander: refresh cookie rotated after the access token lifetime: true; still operational: true
+commander: password accepted -> second step required (no session yet)
+commander (device 2) signed in: true
+commander: other device returned to sign-in after revocation
+commander: signed in with a recovery code: true
+commander: recovery codes left after one use: 9
+commander: reusing the same recovery code: That recovery code is not valid or was already used.
+operator: enrolment screen shown first; operational navigation visible: false
+operator: workspace after enrolment: true
+officer: enrolment screen shown first; operational navigation visible: false
+officer: workspace after enrolment: true
+admin: direct API calls with a password-only session: {"/teams/":403,"/diagnostics/":403,"/auth/users":403,"/incidents/":403} (auth_state MFA_ENROLLMENT_PENDING)
+admin: enrolment screen shown first; operational navigation visible: false
+admin: workspace after enrolment: true
+developer: direct API calls with a password-only session: {"/teams/":403,"/diagnostics/":403,"/auth/users":403,"/incidents/":403} (auth_state MFA_ENROLLMENT_PENDING)
+developer: enrolment screen shown first; operational navigation visible: false
+developer: workspace after enrolment: true
+citizen: email verified through the dev outbox flow: true
+citizen: account meena registered and email verified earlier (dev outbox flow)
+citizen: signed in with a password only (MFA optional): true
+citizen: MFA on: true
+citizen: password reset done: Password changed. Every device was signed out; sign in with your new password.
+citizen: after the password reset the sign-in STILL requires the second step (MFA preserved)
+anonymous: app opens on the sign-in page, no operational page rendered: true
+guest: emergency report accepted without any sign-in or MFA

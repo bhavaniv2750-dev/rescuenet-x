@@ -107,6 +107,13 @@ Scope notes: `*.assigned` = only the officer's own team's missions; `*.own` = on
 | `GET /api/auth/me` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `PATCH /api/auth/me/contact` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/me/password` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/disable` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/enroll/confirm` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/enroll/start` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/reauth` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/recovery-codes/regenerate` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `GET /api/auth/mfa/status` | 401 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `POST /api/auth/mfa/verify` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/password/forgot` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `POST /api/auth/password/reset` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `GET /api/auth/portals` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |

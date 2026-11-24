@@ -25,6 +25,8 @@ import { SettingsView } from './components/Views/SettingsView';
 import { PublicHomeView } from './components/Views/PublicHomeView';
 import { DiagnosticsView } from './components/Views/DiagnosticsView';
 import { ForcedPasswordChange } from './components/Auth/ForcedPasswordChange';
+import { MfaEnrollment } from './components/Auth/MfaEnrollment';
+import { SessionNeedsSignIn } from './components/Auth/RestrictedStates';
 import { ResetPassword } from './components/Auth/ResetPassword';
 import { ReportReceipt, type ReportReceiptData } from './components/UI/ReportReceipt';
 import { MyWorkView } from './components/Views/MyWorkView';
@@ -35,7 +37,7 @@ import { toast } from './lib/toast';
 const GUEST_KEY = 'rescuenet.guest';
 
 function Shell() {
-  const { user, restoring, logout } = useAuth();
+  const { user, restoring, logout, refreshUser } = useAuth();
   const role = user?.role ?? null;
 
   // A signed-out visitor either sees the sign-in page or browses as a guest.
@@ -150,8 +152,16 @@ function Shell() {
     );
   }
 
-  if (user?.password_change_required) {
+  // Restricted authentication states are decided HERE, before any page of the app is rendered, so nobody briefly sees an
+  // operational screen. The server enforces the same rules on every request; this only avoids showing pages that would fail.
+  if (user?.password_change_required || user?.auth_state === 'PASSWORD_CHANGE_PENDING') {
     return <ForcedPasswordChange />;
+  }
+  if (user?.auth_state === 'MFA_ENROLLMENT_PENDING') {
+    return <MfaEnrollment mandatory userName={user.full_name} onDone={refreshUser} />;
+  }
+  if (user?.auth_state === 'MFA_CHALLENGE_PENDING') {
+    return <SessionNeedsSignIn />;
   }
 
   if (!user && !guest) {

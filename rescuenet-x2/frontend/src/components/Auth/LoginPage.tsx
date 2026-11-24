@@ -5,6 +5,7 @@ import type { PortalId, PortalInfo } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { cleanMessage } from '../../lib/toast';
 import { ForgotPassword } from './ForgotPassword';
+import { MfaChallenge } from './MfaChallenge';
 
 const PORTAL_TABS: { id: PortalId; label: string; hint: string; icon: React.ElementType }[] = [
   { id: 'public', label: 'Citizens & Volunteers', hint: 'Report a flood, get warnings, offer help', icon: Users },
@@ -18,7 +19,9 @@ interface Props {
 }
 
 export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
-  const { login, register } = useAuth();
+  const { login, register, completeMfa } = useAuth();
+  // Set after the password step for an account with MFA. No session exists yet; only this single-use challenge.
+  const [challenge, setChallenge] = useState<{ token: string; expiresIn: number } | null>(null);
   const [portal, setPortal] = useState<PortalId>('public');
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [info, setInfo] = useState<PortalInfo | null>(null);
@@ -70,7 +73,11 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
           remember,
         );
       } else {
-        await login(portal, username, password, remember);
+        const r = await login(portal, username, password, remember);
+        if ('challenge' in r) {
+          setPassword('');
+          setChallenge({ token: r.challenge, expiresIn: r.expiresIn });
+        }
       }
     } catch (err) {
       const msg = cleanMessage(err);
@@ -119,7 +126,13 @@ export const LoginPage: React.FC<Props> = ({ onContinueAsGuest, notice }) => {
 
       <main className="login-panel">
         <div className="login-card">
-          {mode === 'forgot' ? (
+          {challenge ? (
+            <MfaChallenge
+              expiresInSeconds={challenge.expiresIn}
+              onSubmit={(input) => completeMfa(challenge.token, input)}
+              onCancel={() => { setChallenge(null); setError(null); }}
+            />
+          ) : mode === 'forgot' ? (
             <ForgotPassword onBack={() => setMode('signin')} />
           ) : (
             <>

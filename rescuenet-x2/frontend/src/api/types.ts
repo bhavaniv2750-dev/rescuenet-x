@@ -464,6 +464,10 @@ export interface AuthUser {
   phone_verified?: boolean;
   /** Temporary password: only the password-change screen works until this is cleared. */
   password_change_required?: boolean;
+  mfa_required?: boolean;
+  mfa_enabled?: boolean;
+  /** MFA_ENROLLMENT_PENDING, MFA_CHALLENGE_PENDING, PASSWORD_CHANGE_PENDING, CONTACT_VERIFICATION_PENDING or AUTHENTICATED. */
+  auth_state?: string;
   portal: PortalId | '';
   team_id?: string | null;
   volunteer_id?: string | null;
@@ -472,6 +476,7 @@ export interface AuthUser {
 }
 
 export interface TokenResponse {
+  status?: 'authenticated';
   access_token: string;
   token_type: string;
   /** Seconds until the access token expires (the refresh token is an HttpOnly cookie and is never in the body). */
@@ -524,4 +529,30 @@ export interface DevOutboxMessage {
   body: string | null;
   created_at: string;
   delivery_status: string;
+}
+
+/** Password step passed but the account has MFA: no session yet, only a short-lived challenge. */
+export interface MfaChallengeResponse {
+  status: 'mfa_required';
+  challenge_token: string;
+  expires_in: number;
+  methods: string[];
+}
+
+export interface MfaStatus {
+  required: boolean;
+  enabled: boolean;
+  enrollment_pending: boolean;
+  recovery_codes_remaining: number;
+  auth_state: string;
+  can_disable: boolean;
+}
+
+export interface MfaEnrollStart {
+  secret: string;
+  otpauth_uri: string;
+  qr_svg_data_uri: string;
+  issuer: string;
+  account: string;
+  notice: string;
 }
