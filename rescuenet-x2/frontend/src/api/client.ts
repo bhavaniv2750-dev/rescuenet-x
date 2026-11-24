@@ -90,7 +90,9 @@ export function refreshSession(): Promise<SessionResponse | null> {
   return refreshing;
 }
 
-const usesCookies = (endpoint: string) => endpoint.startsWith('/auth/');
+// Endpoints that set or use the session cookies. Accepting an invitation starts a session, so it must send/receive them too
+// (found in the S6 browser run: without this the new session's cookies were dropped and a reload signed the new owner out).
+const usesCookies = (endpoint: string) => endpoint.startsWith('/auth/') || endpoint === '/invitations/accept';
 
 async function request<T>(endpoint: string, options: RequestInit = {}, retried = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -161,6 +163,21 @@ export const api = {
   register: (payload: import('./types').RegisterPayload) =>
     request<import('./types').TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   getMe: () => request<import('./types').AuthUser>('/auth/me'),
+  /** The caller's workspace. Open to guests (public workspace). */
+  getWorkspace: () => request<import('./types').Workspace>('/auth/workspace'),
+  // ---- agencies and invitations (S5/S6)
+  getAgencies: () => request<{ items: import('./types').AgencyRow[]; count: number; types: string[] }>('/agencies'),
+  getAgency: (id: number) => request<import('./types').AgencyRow>(`/agencies/${id}`),
+  createAgency: (payload: { name: string; agency_type: string; region?: string }) =>
+    request<import('./types').AgencyRow>('/agencies', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAgency: (id: number, payload: Record<string, unknown>) =>
+    request<import('./types').AgencyRow>(`/agencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  setMemberAgency: (userId: number, agency_id: number | null) =>
+    request<{ user_id: number; agency_id: number | null }>(`/agencies/members/${userId}`, { method: 'PUT', body: JSON.stringify({ agency_id }) }),
+  setTeamAgency: (teamId: string, agency_id: number | null) =>
+    request<{ team_id: string; agency_id: number | null }>(`/agencies/teams/${teamId}`, { method: 'PUT', body: JSON.stringify({ agency_id }) }),
+  getInvitations: () => request<{ items: import('./types').InvitationRow[]; count: number; note: string }>('/invitations'),
+  revokeInvitation: (id: number) => request<{ revoked: boolean; status: string }>(`/invitations/${id}/revoke`, { method: 'POST' }),
   /** Invitations (S5). The token travels in the request body, never in a URL. Unusable invitations all answer the same 404. */
   inspectInvitation: (token: string) =>
     request<import('./types').InvitationPreview>('/invitations/inspect', { method: 'POST', body: JSON.stringify({ token }) }),

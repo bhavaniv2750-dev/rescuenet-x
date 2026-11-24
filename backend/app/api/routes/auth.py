@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.deps import actor_name, ensure_recent_mfa, get_current_user, require_permission, utcnow_naive
+from app.api.deps import actor_name, ensure_recent_mfa, get_current_user, get_optional_user, require_permission, utcnow_naive
 from app.core.permissions import P, PRIVILEGED_ROLES, PUBLIC_ROLES, permissions_for_role
 from app.core.security import (
     PORTALS,
@@ -28,6 +28,7 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.entities import AuditLog, AuthSession, RefreshToken, RescueTeam, User, Volunteer
+from app.core import navigation as nav
 from app.services import auth_state as astate
 from app.services import mfa as mfa_svc
 from app.services import notifications as notif
@@ -84,6 +85,7 @@ class UserOut(BaseModel):
     mfa_required: bool = False               # mandatory for every non-public role
     mfa_enabled: bool = False
     auth_state: str = ""                      # see app/services/auth_state.py; only AUTHENTICATED reaches operational pages
+    workspace: Optional[dict] = None          # S6: backend-decided experience, capabilities and navigation (ids only, no private data)
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -151,6 +153,8 @@ def user_out(db: Session, user: User, session: Optional[AuthSession] = None) -> 
     if user.volunteer_id:
         vol = db.query(Volunteer).filter(Volunteer.id == user.volunteer_id).first()
         out.volunteer_verified = bool(vol and vol.is_verified)
+    if state:
+        out.workspace = nav.build_workspace(user, state, session or getattr(user, "_session", None), enabled)
     return out
 
 
@@ -278,6 +282,15 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return user_out(db, user)
+
+
+@router.get("/workspace")
+def workspace(user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
+    """The caller's workspace: experience (public or professional), capabilities and the navigation entries that exist for them.
+    Open to guests (public workspace). Identifiers and booleans only; the API still authorises every request itself."""
+    if user is None:
+        return nav.build_workspace(None)
+    return nav.build_workspace(user, user.auth_state, getattr(user, "_session", None), getattr(user, "_mfa_enabled", False))
 
 
 def _unauthorized(detail: str = "Your session has ended. Please sign in again.") -> JSONResponse:

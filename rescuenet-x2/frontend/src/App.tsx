@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './index.css';
 import './theme.css';
 import { api } from './api/client';
 import type { Alert, DashboardData, Facility, Incident, RescueTeam, RiverGauge, Volunteer } from './api/types';
 import { AuthProvider, useAuth } from './auth/AuthContext';
-import { canApprove, homePage, isDepartment, isStaff, navFor } from './auth/access';
+import { can, homePageOf, navSections, pageForPath, pathForPage } from './auth/access';
 import type { Page } from './auth/access';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Topbar } from './components/Layout/Topbar';
@@ -34,13 +34,15 @@ import { AccountView } from './components/Views/AccountView';
 import { AdminConsoleView } from './components/Views/AdminConsoleView';
 import { toast } from './lib/toast';
 import { AcceptInvitation } from './components/Auth/AcceptInvitation';
+import { AgenciesView } from './components/Views/AgenciesView';
+import { NotFoundPage, UnauthorizedPage } from './components/Routing/RouteProblems';
+import type { Workspace } from './api/types';
 import { ContactVerificationRequired } from './components/Auth/ContactVerificationRequired';
 
 const GUEST_KEY = 'rescuenet.guest';
 
 function Shell() {
   const { user, restoring, logout, refreshUser } = useAuth();
-  const role = user?.role ?? null;
 
   // A signed-out visitor either sees the sign-in page or browses as a guest.
   const [receipt, setReceipt] = useState<ReportReceiptData | null>(null);
@@ -67,7 +69,8 @@ function Shell() {
   });
   const [guest, setGuest] = useState<boolean>(() => {
     try {
-      return sessionStorage.getItem(GUEST_KEY) === '1';
+      // A public-namespace address (/public/...) is public information: it opens without an account.
+      return sessionStorage.getItem(GUEST_KEY) === '1' || window.location.pathname.startsWith('/public/');
     } catch {
       return false;
     }
@@ -81,7 +84,12 @@ function Shell() {
     }
   };
 
-  const [activePage, setActivePage] = useState<Page>('Home');
+  const [activePage, setActivePageState] = useState<Page>('Home');
+  const [routeProblem, setRouteProblem] = useState<'unauthorized' | 'notfound' | null>(null);
+  const [guestWorkspace, setGuestWorkspace] = useState<Workspace | null>(null);
+  // The server decides the workspace. A signed-in user's arrives with the user (no flash of the wrong navigation); a guest's is
+  // fetched. Until it is known nothing is offered.
+  const workspace: Workspace | null = user ? user.workspace ?? null : guest ? guestWorkspace : null;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [backendStatus, setBackendStatus] = useState('Checking...');
   const [refreshing, setRefreshing] = useState(false);
@@ -95,21 +103,65 @@ function Shell() {
   const [gauges, setGauges] = useState<RiverGauge[]>([]);
   const [catchmentsGeoJSON, setCatchmentsGeoJSON] = useState<any>(null);
 
-  const dept = isDepartment(role);
-  const staff = isStaff(role);
+  const dept = can(workspace, 'view_incidents');
+  const staff = can(workspace, 'operations_console');
+  const canApproveDispatch = can(workspace, 'approve_dispatch');
+  const sections = useMemo(() => navSections(workspace), [workspace]);
+  const wsKey = workspace ? `${workspace.experience}|${workspace.navigation.ids.join(',')}` : '';
 
-  // Go to the right landing page when the signed-in user changes (sign-in, sign-out).
+  // Guests: ask the server for the public workspace.
   useEffect(() => {
-    setActivePage(homePage(role));
+    if (user || !guest) { if (user) setGuestWorkspace(null); return; }
+    let live = true;
+    api.getWorkspace().then((w) => live && setGuestWorkspace(w)).catch(() => undefined);
+    return () => { live = false; };
+  }, [user, guest]);
+
+  /** Open a page: only pages the server offered exist. The address bar follows. */
+  const navigate = useCallback((page: Page) => {
+    const path = pathForPage(workspace, page);
+    if (!path) return;                                  // not offered by the server: it cannot be opened
+    setActivePageState(page);
+    setRouteProblem(null);
+    if (window.location.pathname !== path) window.history.pushState(null, '', path);
+  }, [workspace]);
+
+  // Resolve the address (initial load, back/forward, workspace change) against what the server offers.
+  const resolveLocation = useCallback(() => {
+    if (!workspace) return;
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    const page = pageForPath(workspace, path);
+    if (page) { setActivePageState(page); setRouteProblem(null); return; }
+    if (path === '/' || path === '/index.html') {
+      const home = homePageOf(workspace);
+      if (home) {
+        setActivePageState(home); setRouteProblem(null);
+        window.history.replaceState(null, '', pathForPage(workspace, home) || '/');
+      }
+      return;
+    }
+    setRouteProblem(workspace.known_paths.includes(path) ? 'unauthorized' : 'notfound');
+  }, [workspace]);
+  useEffect(() => { resolveLocation(); }, [wsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.addEventListener('popstate', resolveLocation);
+    return () => window.removeEventListener('popstate', resolveLocation);
+  }, [resolveLocation]);
+
+  // Signing in clears guest mode; signing out returns the address bar to the start page.
+  const hadUser = useRef(false);
+  useEffect(() => {
     if (user) setGuestMode(false);
+    if (!user && hadUser.current) { window.history.replaceState(null, '', '/'); setRouteProblem(null); }
+    hadUser.current = Boolean(user);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If the user lands on a page their role does not have, send them home.
-  const sections = useMemo(() => navFor(role), [role]);
+  // Keep the workspace fresh (activation steps, agency, capabilities): the server is the only source of truth.
   useEffect(() => {
-    const allowed = new Set(sections.flatMap((s) => s.pages));
-    if (!allowed.has(activePage)) setActivePage(homePage(role));
-  }, [sections, activePage, role]);
+    if (!user) return;
+    const t = window.setInterval(() => { refreshUser(); }, 30000);
+    return () => window.clearInterval(t);
+  }, [user?.id, refreshUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadAllData = useCallback(async () => {
     setRefreshing(true);
@@ -184,26 +236,42 @@ function Shell() {
   }
 
   if (!user && !guest) {
-    return <LoginPage onContinueAsGuest={() => { setGuestMode(true); setActivePage('Home'); }} />;
+    return <LoginPage onContinueAsGuest={() => setGuestMode(true)} />;
+  }
+
+  // The server's answer is not here yet (a guest's public workspace is being fetched): offer nothing rather than the wrong thing.
+  if (!workspace) {
+    return (
+      <div className="splash">
+        <div className="spinner" aria-label="Loading" />
+      </div>
+    );
+  }
+  const goHome = () => { window.history.replaceState(null, '', '/'); setRouteProblem(null); resolveLocation(); };
+  if (routeProblem === 'unauthorized') {
+    return <UnauthorizedPage signedIn={Boolean(user)} onHome={goHome} onSignIn={() => setGuestMode(false)} />;
+  }
+  if (routeProblem === 'notfound') {
+    return <NotFoundPage onHome={goHome} />;
   }
 
   const afterReport = (r?: ReportReceiptData) => {
     if (r) setReceipt(r);
     toast.success('Report sent. The control room has been notified.');
     loadAllData();
-    setActivePage(staff ? 'Rescue Operations' : user ? 'My Reports' : 'Home');
+    navigate(staff ? 'Rescue Operations' : pathForPage(workspace, 'My Reports') ? 'My Reports' : 'Home');
   };
 
-  const goReport = () => setActivePage(dept && role !== 'RESCUE_OFFICER' ? 'Incident Reports' : 'Report Emergency');
+  const goReport = () => navigate(can(workspace, 'manage_incidents') ? 'Incident Reports' : 'Report Emergency');
 
-  const intakeOnly = role !== 'ADMIN' && role !== 'COMMANDER' && role !== 'OPERATOR';
+  const intakeOnly = !can(workspace, 'manage_incidents');
 
   return (
     <div className="app-shell">
       <Sidebar
         sections={sections}
         activePage={activePage}
-        onNavigate={setActivePage}
+        onNavigate={navigate}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         backendStatus={backendStatus}
@@ -217,7 +285,7 @@ function Shell() {
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onRefresh={loadAllData}
           onReport={goReport}
-          onOpenAccount={() => setActivePage('My Account')}
+          onOpenAccount={() => navigate('My Account')}
           onSignIn={() => setGuestMode(false)}
           onSignOut={logout}
           refreshing={refreshing}
@@ -237,15 +305,15 @@ function Shell() {
         <main className="page-viewport" key={activePage}>
           {receipt && <ReportReceipt receipt={receipt} onClose={() => setReceipt(null)} />}
           {activePage === 'Home' && (
-            <PublicHomeView alerts={alerts} gauges={gauges} facilities={facilities} userName={user?.full_name} onNavigate={setActivePage} />
+            <PublicHomeView alerts={alerts} gauges={gauges} facilities={facilities} userName={user?.full_name} onNavigate={navigate} />
           )}
 
           {activePage === 'Overview' && (
             <OverviewView
               data={dashboardData}
               loading={refreshing && !dashboardData}
-              onNavigate={(page) => setActivePage(page as Page)}
-              onSelectIncident={() => setActivePage('Rescue Operations')}
+              onNavigate={(page) => navigate(page as Page)}
+              onSelectIncident={() => navigate('Rescue Operations')}
               catchmentsGeoJSON={catchmentsGeoJSON}
               incidents={incidents}
               alerts={alerts}
@@ -268,7 +336,7 @@ function Shell() {
 
           {activePage === 'Flood Forecasting' && <ForecastingView initialForecast={dashboardData?.forecast_preview} />}
 
-          {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} isCommander={canApprove(role)} />}
+          {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} isCommander={canApproveDispatch} />}
 
           {activePage === 'Rescue Operations' && (
             <RescueOperationsView incidents={incidents} teams={teams} onRefresh={loadAllData} onOpenReportModal={goReport} />
@@ -287,13 +355,14 @@ function Shell() {
 
           {activePage === 'Rescue Records' && <RescueRecordsView />}
 
-          {activePage === 'AI Supervisor' && <SupervisorView incidents={incidents} canApprove={canApprove(role)} />}
+          {activePage === 'AI Supervisor' && <SupervisorView incidents={incidents} canApprove={canApproveDispatch} />}
 
           {activePage === 'Data & Models' && <DatasetsView />}
 
           {activePage === 'Diagnostics' && <DiagnosticsView />}
 
           {activePage === 'Admin Console' && <AdminConsoleView canManageUsers teams={teams} />}
+          {activePage === 'Agencies & Invitations' && <AgenciesView />}
           {activePage === 'Audit Log' && <AdminConsoleView canManageUsers={false} teams={teams} />}
 
           {activePage === 'Settings' && <SettingsView backendStatus={backendStatus} onRefresh={loadAllData} />}

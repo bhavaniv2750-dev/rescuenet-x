@@ -15,7 +15,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="rescuenet_test_")
-os.environ.setdefault("RESCUENET_ENV", "development")
+# The tests ALWAYS run against a throw-away database and a throw-away upload/backup directory, whatever the shell environment says
+# (a developer's DATABASE_URL must never be touched by the test suite). Found when a test run inherited a demo database URL.
+os.environ["RESCUENET_ENV"] = "development"
 # A fresh throw-away MFA encryption key for the whole test run (never a fixed value in the repository).
 import base64 as _b64, secrets as _sec
 os.environ.setdefault("MFA_ENCRYPTION_KEYS", "test:" + _b64.urlsafe_b64encode(_sec.token_bytes(32)).decode().rstrip("="))
@@ -25,9 +27,9 @@ os.environ.setdefault("MAX_SESSIONS_PER_USER", "100000")
 os.environ["SEED_DEMO_USERS"] = "true"
 DEMO_PASSWORD = "Dm1-" + _sec.token_urlsafe(12)
 os.environ["DEMO_USER_PASSWORD"] = DEMO_PASSWORD
-os.environ.setdefault("UPLOAD_DIR", str(Path(_TEST_DB_DIR) / "uploads"))
-os.environ.setdefault("BACKUP_DIR", str(Path(_TEST_DB_DIR) / "backups"))
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}")
+os.environ["UPLOAD_DIR"] = str(Path(_TEST_DB_DIR) / "uploads")
+os.environ["BACKUP_DIR"] = str(Path(_TEST_DB_DIR) / "backups")
+os.environ["DATABASE_URL"] = f"sqlite:///{Path(_TEST_DB_DIR) / 'test_rescuenet.db'}"
 
 
 import uuid

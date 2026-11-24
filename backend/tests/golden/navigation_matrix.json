@@ -1,0 +1,170 @@
+{
+  "ADMIN": {
+    "capabilities": [
+      "manage_agencies",
+      "manage_users",
+      "read_audit",
+      "report_incident",
+      "view_diagnostics"
+    ],
+    "experience": "PROFESSIONAL",
+    "home": "/console/admin",
+    "ids": [
+      "alerts",
+      "forecasting",
+      "data-models",
+      "facilities",
+      "admin-console",
+      "agencies",
+      "audit-log",
+      "diagnostics",
+      "settings",
+      "account"
+    ]
+  },
+  "CITIZEN": {
+    "capabilities": [
+      "report_incident",
+      "view_own_reports"
+    ],
+    "experience": "PUBLIC",
+    "home": "/",
+    "ids": [
+      "home",
+      "flood-twin",
+      "forecasting",
+      "alerts",
+      "facilities",
+      "report-emergency",
+      "my-reports",
+      "account"
+    ]
+  },
+  "COMMANDER": {
+    "capabilities": [
+      "approve_dispatch",
+      "export_records",
+      "manage_alerts",
+      "manage_facilities",
+      "manage_incidents",
+      "manage_volunteers",
+      "operations_console",
+      "read_audit",
+      "report_incident",
+      "run_triage",
+      "view_incidents",
+      "view_records"
+    ],
+    "experience": "PROFESSIONAL",
+    "home": "/console/overview",
+    "ids": [
+      "overview",
+      "operations",
+      "ai-supervisor",
+      "alerts",
+      "flood-twin",
+      "forecasting",
+      "data-models",
+      "volunteers",
+      "facilities",
+      "records",
+      "incident-reports",
+      "audit-log",
+      "account"
+    ]
+  },
+  "DEVELOPER": {
+    "capabilities": [
+      "report_incident",
+      "view_diagnostics"
+    ],
+    "experience": "PROFESSIONAL",
+    "home": "/console/diagnostics",
+    "ids": [
+      "data-models",
+      "diagnostics",
+      "account"
+    ]
+  },
+  "GUEST": {
+    "capabilities": [
+      "report_incident"
+    ],
+    "experience": "PUBLIC",
+    "home": "/",
+    "ids": [
+      "home",
+      "flood-twin",
+      "forecasting",
+      "alerts",
+      "facilities",
+      "report-emergency"
+    ]
+  },
+  "OPERATOR": {
+    "capabilities": [
+      "manage_alerts",
+      "manage_facilities",
+      "manage_incidents",
+      "manage_volunteers",
+      "operations_console",
+      "report_incident",
+      "run_triage",
+      "view_incidents",
+      "view_records"
+    ],
+    "experience": "PROFESSIONAL",
+    "home": "/console/overview",
+    "ids": [
+      "overview",
+      "operations",
+      "ai-supervisor",
+      "alerts",
+      "flood-twin",
+      "forecasting",
+      "data-models",
+      "volunteers",
+      "facilities",
+      "records",
+      "incident-reports",
+      "account"
+    ]
+  },
+  "RESCUE_OFFICER": {
+    "capabilities": [
+      "report_incident",
+      "view_incidents",
+      "view_records"
+    ],
+    "experience": "PROFESSIONAL",
+    "home": "/console/missions",
+    "ids": [
+      "missions",
+      "alerts",
+      "flood-twin",
+      "forecasting",
+      "facilities",
+      "records",
+      "report-emergency",
+      "account"
+    ]
+  },
+  "VOLUNTEER": {
+    "capabilities": [
+      "report_incident",
+      "view_own_reports"
+    ],
+    "experience": "PUBLIC",
+    "home": "/",
+    "ids": [
+      "home",
+      "flood-twin",
+      "forecasting",
+      "alerts",
+      "facilities",
+      "report-emergency",
+      "my-reports",
+      "account"
+    ]
+  }
+}

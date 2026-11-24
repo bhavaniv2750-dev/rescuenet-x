@@ -128,6 +128,7 @@ MUST_ALLOW = {
     ("POST", "/api/auth/mfa/disable"): SIGNED_IN,
     ("POST", "/api/auth/mfa/recovery-codes/regenerate"): SIGNED_IN,
     ("GET", "/api/auth/capabilities"): PUBLIC,
+    ("GET", "/api/auth/workspace"): PUBLIC,             # S6: guests get the public workspace; signed-in callers their own (ids and booleans only)
     ("POST", "/api/auth/password/forgot"): PUBLIC,      # always the same generic answer
     ("POST", "/api/auth/password/reset"): PUBLIC,       # needs a valid single-use token
     ("GET", "/api/dev/outbox"): PUBLIC,                 # development + loopback only; 404 elsewhere (tests/test_dev_outbox.py)

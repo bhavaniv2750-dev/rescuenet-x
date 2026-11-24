@@ -468,12 +468,38 @@ export interface AuthUser {
   mfa_enabled?: boolean;
   /** MFA_ENROLLMENT_PENDING, MFA_CHALLENGE_PENDING, PASSWORD_CHANGE_PENDING, CONTACT_VERIFICATION_PENDING or AUTHENTICATED. */
   auth_state?: string;
+  /** Experience, capabilities and navigation as decided by the server. */
+  workspace?: Workspace | null;
   portal: PortalId | '';
   team_id?: string | null;
   agency_id?: number | null;
   volunteer_id?: string | null;
   volunteer_verified?: boolean | null;
   is_active: boolean;
+}
+
+/** Backend-decided workspace (S6). Identifiers and booleans only; the API still authorises every request. */
+export interface WorkspaceNavItem { id: string; label: string; path: string }
+export interface Workspace {
+  experience: 'PUBLIC' | 'PROFESSIONAL';
+  authenticated: boolean;
+  activation: { state: string; complete: boolean; restricted_reason: string | null; remaining_steps: string[] };
+  assurance: { level: 'NONE' | 'PASSWORD' | 'MFA'; mfa_enabled: boolean; mfa_required: boolean; recent_mfa: boolean };
+  agency_id: number | null;
+  team_id: string | null;
+  capabilities: Record<string, boolean>;
+  navigation: { sections: { id: string; title: string; items: WorkspaceNavItem[] }[]; ids: string[]; home: string | null; home_id: string | null };
+  known_paths: string[];
+}
+
+export interface AgencyRow {
+  id: number; name: string; agency_type: string; region: string | null; is_active: boolean;
+  created_at: string; updated_at: string; personnel_count: number; team_count: number;
+  teams?: { id: string; name: string }[]; personnel?: { id: number; username: string; full_name: string; role: Role }[];
+}
+export interface InvitationRow {
+  id: number; role: Role; recipient: string; agency: string | null; team_id: string | null;
+  status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'; created_at: string; expires_at: string; created_by: string;
 }
 
 export interface InvitationPreview {

@@ -179,6 +179,16 @@
     "VOLUNTEER": "403",
     "anonymous": "401"
   },
+  "GET /api/auth/workspace": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
+  },
   "GET /api/dashboard": {
     "ADMIN": "allow",
     "CITIZEN": "403",

@@ -1,0 +1,58 @@
+setup: privileged demo accounts enrolled in MFA through the API (harness), invited operator created through the real invitation flow below
+guest: app opens on the sign-in page, no navigation rendered: true
+guest: navigation = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | Report Emergency ; path /
+guest: /console/operations -> unauthorized page: true ; operational content rendered: false
+guest: /public/alerts opens directly (public namespace): nav item active, path /public/alerts, sidebar 6 entries
+guest: unknown address -> not found page: true
+guest: emergency report accepted without any account
+citizen: experience PUBLIC, navigation = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | Report Emergency | My Reports | My Account ; path /
+citizen: /console/overview -> unauthorized: true
+volunteer: experience PUBLIC, navigation = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | Report Emergency | My Reports | My Account ; path /
+volunteer: /console/overview -> unauthorized: true
+commander: experience PROFESSIONAL, landing path /console/overview, navigation = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | Audit Log | My Account
+commander: clicking "My Account" moves the address bar to /account
+commander: browser Back returns to /console/overview
+commander: /console/admin -> unauthorized page: true
+commander: "Go to my workspace" -> /console/overview
+operator: experience PROFESSIONAL, landing path /console/overview, navigation = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | My Account
+operator: clicking "My Account" moves the address bar to /account
+operator: browser Back returns to /console/overview
+operator: /console/audit -> unauthorized page: true
+operator: "Go to my workspace" -> /console/overview
+officer: experience PROFESSIONAL, landing path /console/missions, navigation = My Missions | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Facilities & Shelters | Rescue Records | Report Emergency | My Account
+officer: clicking "My Account" moves the address bar to /account
+officer: browser Back returns to /console/missions
+officer: /console/operations -> unauthorized page: true
+officer: "Go to my workspace" -> /console/missions
+admin: experience PROFESSIONAL, landing path /console/admin, navigation = Emergency Alerts | Flood Forecasting | Data & Models | Facilities & Shelters | Admin Console | Agencies & Invitations | Audit Log | Diagnostics | Settings | My Account
+admin: clicking "My Account" moves the address bar to /account
+admin: browser Back returns to /console/admin
+admin: /console/incidents -> unauthorized page: true
+admin: "Go to my workspace" -> /console/admin
+developer: experience PROFESSIONAL, landing path /console/diagnostics, navigation = Data & Models | Diagnostics | My Account
+developer: clicking "My Account" moves the address bar to /account
+developer: browser Back returns to /console/diagnostics
+developer: /console/operations -> unauthorized page: true
+developer: "Go to my workspace" -> /console/diagnostics
+admin: no incident, dispatch, triage or alert-publishing entries: true
+developer: diagnostics-only navigation: Data & Models | Diagnostics | My Account
+invitation: link issued by the host CLI (token not recorded in this log); fragment-based: true
+invitation: preview shows role and masked recipient: You are invited as operator, for [masked]
+invitation: token removed from the address bar: true
+invitation: account created; contact-verification screen first; sidebar rendered: false
+restricted: opening /console/operations still shows the verification screen, not the console: true ; console rendered: false
+restricted: API call for operational data with this account before verification: HTTP 403
+activation: after the emailed code, MFA enrolment is mandatory and is the only thing offered; sidebar rendered: false
+activation: after enrolment the session holds the second factor and the workspace opens: Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | My Account
+activation complete: operator workspace, navigation = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | My Account
+invitation: the same link used again: HTTP 404 (generic refusal)
+role change (OPERATOR -> DEVELOPER, stored role): reloading at the old operator address /console/overview -> unauthorized page: true ; console shell rendered: false
+role change: workspace after the change, landing /console/diagnostics, navigation = Data & Models | Diagnostics | My Account
+revocation: administrator ends the operator's sessions: HTTP 200
+revocation: the open browser returns to the sign-in page, console no longer rendered: true
+team reassignment: TEAM-NDRF-10 -> TEAM-CIVIL-04: HTTP 200
+team reassignment: officer's open session ended and the browser returned to sign-in
+team reassignment: after signing in again, landing path /console/missions ; My Missions page names the new team TEAM-CIVIL-04: true
+agencies: administrator opens /console/agencies directly: true
+agencies: created (category only, no real affiliation): true
+invitations: administrator view lists invitations with masked recipient, issuing is host-only: true
