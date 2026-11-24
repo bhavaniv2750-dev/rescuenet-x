@@ -1,3 +1,4 @@
+import { SeverityBadge, DataNotice } from '../ui';
 import React, { useState } from 'react';
 import { cleanMessage, toast } from '../../lib/toast';
 import { api, capUrl } from '../../api/client';
@@ -41,7 +42,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
       setShowCreateModal(false);
       setTitle('');
       setMessage('');
-      setActionNotice('Emergency Geo-Targeted Alert created and broadcast in simulated CAP channel.');
+      setActionNotice('Alert created. It is shown in this app and can be exported as CAP 1.2; it is not sent to phones.');
       onRefresh();
     } catch (err: any) {
       toast.error(cleanMessage(err) || 'Error creating alert');
@@ -72,9 +73,10 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
 
   return (
     <div className="alerts-container">
+      <DataNotice items={alerts as { data_label?: string }[]} noun="alerts" />
       <div className="view-header">
         <div>
-          <h2>Geo-Targeted Emergency Alerts Console</h2>
+          <h1>Emergency alerts</h1>
           <p>
             Warnings for areas at risk, each with a target radius. They are shown in this app; they are not sent as SMS or push messages.
           </p>
@@ -108,7 +110,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
             >
               <div className="alert-card-header">
                 <div className="alert-badge-group">
-                  <span className={`pill-alert-${alt.severity.toLowerCase()}`}>{alt.severity}</span>
+                  <SeverityBadge severity={alt.severity} />
                   <span className={`status-pill ${isResolved ? 'pill-resolved' : 'pill-active'}`}>
                     {alt.status === 'ACTIVE' ? 'IN FORCE' : alt.status === 'ACKNOWLEDGED' ? 'IN FORCE · ACKNOWLEDGED' : alt.status}
                   </span>
@@ -180,7 +182,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ alerts, onRefresh, canMa
         <div className="modal-backdrop">
           <div className="modal-box">
             <div className="modal-header">
-              <h3>Create & Broadcast Geo-Targeted Alert</h3>
+              <h3>Create an alert</h3>
               <button className="icon-btn" onClick={() => setShowCreateModal(false)}>✕</button>
             </div>
             <form onSubmit={handleCreateAlert} className="modal-form">

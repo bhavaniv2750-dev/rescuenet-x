@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cleanMessage, toast } from '../../lib/toast';
+import { PageHeader, Panel, StatusBadge } from '../ui';
 import { api } from '../../api/client';
 import type { Incident, SupervisorTask } from '../../api/types';
 import {
@@ -8,7 +9,6 @@ import {
   AlertOctagon,
   ShieldCheck,
   GitBranch,
-  Cpu,
   AlertTriangle,
   CheckCircle,
   RefreshCw,
@@ -122,52 +122,29 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
 
   return (
     <div className="supervisor-container">
-      <div className="view-header">
-        <div>
-          <h2>AI Supervisor & Multi-Agent Orchestration</h2>
-          <p>
-            Local-first LLM reasoning (Ollama Qwen 4B Instruct) orchestrating specialized telemetry,
-            geospatial intelligence, squad routing, and medical logistics. The model only advises: a deterministic rule
-            (five or more victims, or HIGH/CRITICAL severity) forces commander approval before dispatch.
-          </p>
-        </div>
-      </div>
+      <PageHeader title="AI supervisor"
+        description={<>Triage support for the control room. Recommendations are advisory: a fixed rule (five or more victims, or HIGH/CRITICAL severity) always requires commander approval before any dispatch, and nothing is dispatched automatically.</>}
+        meta={<>
+          {ollamaInfo ? (
+            ollamaInfo.available
+              ? <StatusBadge tone="ok">Language model reachable</StatusBadge>
+              : <StatusBadge tone="warn">Language model not reachable: the rule-based fallback is used</StatusBadge>
+          ) : <StatusBadge>Checking language model…</StatusBadge>}
+          {ollamaInfo && <span className="rn-field-hint">Configured model: <code>{ollamaInfo.model}</code></span>}
+        </>} />
 
-      {/* Agents Roster Strip */}
-      <div className="agents-strip panel">
-        <div className="panel-title-bar">
-          <div>
-            <h3>Active Specialized Sub-Agents</h3>
-            <p>RescueNet Multi-Agent Orchestration Engine v2.0</p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {ollamaInfo && (
-              <span
-                className={`status-pill ${ollamaInfo.available ? 'pill-active' : 'pill-critical'}`}
-                title={`Model: ${ollamaInfo.model}`}
-              >
-                <Cpu size={12} style={{ marginRight: '4px', display: 'inline' }} />
-                OLLAMA {ollamaInfo.available ? 'ONLINE' : 'OFFLINE'}: {ollamaInfo.model}
-              </span>
-            )}
-            <span className="status-pill pill-active">
-              {agents.length || 6} AGENTS REGISTERED
-            </span>
-          </div>
-        </div>
+      <Panel title="How triage runs" className="sup-roles">
+        <p className="rn-field-hint">Each triage request passes through the stages below. They are steps in one pipeline inside this server, not separate always-running agents. A stage that needs the language model reports it, and when the model is not reachable the deterministic rule-based result is shown and labelled as such.</p>
         <div className="agents-grid">
           {agents.map((ag) => (
             <div key={ag.id} className="agent-box">
-              <div className="agent-box-top">
-                <span className="agent-icon-symbol font-mono">{ag.icon}</span>
-                <span className="agent-status-dot dot-green" />
-              </div>
+              <div className="agent-box-top"><span className="agent-icon-symbol font-mono" aria-hidden="true">{ag.icon}</span></div>
               <div className="agent-box-name">{ag.name}</div>
               <div className="agent-box-role">{ag.role}</div>
             </div>
           ))}
         </div>
-      </div>
+      </Panel>
 
       <div className="supervisor-main-grid">
         {/* Trigger Orchestration Panel */}

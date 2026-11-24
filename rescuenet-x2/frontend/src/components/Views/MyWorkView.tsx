@@ -1,3 +1,4 @@
+import { SeverityBadge } from '../ui';
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../../api/client';
@@ -48,7 +49,7 @@ export const MyWorkView: React.FC<Props> = ({ variant, teamName }) => {
     <div className="my-work">
       <div className="view-header">
         <div>
-          <h2>{missions ? 'My Team’s Missions' : 'My Reports'}</h2>
+          <h1>{missions ? 'My Team’s Missions' : 'My Reports'}</h1>
           <p>
             {missions
               ? `Incidents dispatched to ${teamName || 'your team'}. Update the status as you move.`
@@ -85,7 +86,7 @@ export const MyWorkView: React.FC<Props> = ({ variant, teamName }) => {
               <div className="work-meta">
                 <span>📍 {inc.area}</span>
                 <span>👥 {inc.people_affected}</span>
-                <span className={`pill-alert-${inc.severity.toLowerCase()}`}>{inc.severity}</span>
+                <SeverityBadge severity={inc.severity} />
                 <span>{new Date(inc.created_at).toLocaleString()}</span>
               </div>
               {!missions && <ProgressNote status={inc.status} />}

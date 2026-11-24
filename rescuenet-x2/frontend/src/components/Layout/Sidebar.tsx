@@ -53,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNaviga
                   return (
                     <button
                       key={page}
+                      title={page}
                       className={`nav-button ${isActive ? 'nav-active' : ''}`}
                       aria-current={isActive ? 'page' : undefined}
                       onClick={() => {

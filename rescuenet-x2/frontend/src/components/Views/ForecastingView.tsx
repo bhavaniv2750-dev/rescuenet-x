@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
+import { Activity, Info } from 'lucide-react';
 import { api } from '../../api/client';
 import type { FloodPredictionResult } from '../../api/types';
-import { Activity, Sliders, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { Button, EmptyState, ErrorState, PageHeader, Panel, ProvenanceBadge, SeverityBadge, StatusBadge } from '../ui';
 
-interface ForecastingViewProps {
-  initialForecast?: FloodPredictionResult | null;
-}
+interface ForecastingViewProps { initialForecast?: FloodPredictionResult | null }
 
 const SUITE_LABELS: Record<string, string> = {
   leaky_baseline_all_features: 'All inputs incl. water level (leakage)',
@@ -13,336 +12,128 @@ const SUITE_LABELS: Record<string, string> = {
   gauge_noise_0_5m: 'Noisy gauge, sd 0.5 m',
   next_hour_forecast: 'Next-hour forecast',
 };
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+const PRESETS: { label: string; v: [number, number, number, number] }[] = [
+  { label: 'Light monsoon', v: [8, 1.8, 65, 30] }, { label: 'Storm surge', v: [42, 4.5, 88, 26] }, { label: 'Severe cloudburst', v: [95, 7.2, 98, 23] },
+];
+
+const Slider: React.FC<{ id: string; label: string; unit: string; value: number; min: number; max: number; step: number; onChange: (n: number) => void; hints: string }> = ({ id, label, unit, value, min, max, step, onChange, hints }) => (
+  <div className="fc-slider">
+    <div className="fc-slider-top">
+      <label htmlFor={id}>{label}</label>
+      <span className="fc-value">{value.toFixed(step < 1 ? 1 : 0)} {unit}</span>
+    </div>
+    <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="range-slider" aria-describedby={`${id}-hint`} />
+    <span id={`${id}-hint`} className="rn-field-hint">{hints}</span>
+  </div>
+);
 
 export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecast }) => {
-  // Input Sliders State
-  const [rainfall, setRainfall] = useState<number>(38.0);
-  const [waterLevel, setWaterLevel] = useState<number>(4.2);
-  const [humidity, setHumidity] = useState<number>(85.0);
-  const [temperature, setTemperature] = useState<number>(27.0);
-
-  // Results State
+  const [rainfall, setRainfall] = useState(38);
+  const [waterLevel, setWaterLevel] = useState(4.2);
+  const [humidity, setHumidity] = useState(85);
+  const [temperature, setTemperature] = useState(27);
   const [forecast, setForecast] = useState<FloodPredictionResult | null>(initialForecast || null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSimulate = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.predictFlood({
-        rainfall_mm: rainfall,
-        water_level_m: waterLevel,
-        humidity_pct: humidity,
-        temperature_c: temperature,
-      });
-      setForecast(res);
-    } catch (err: any) {
-      setError(err.message || 'Error executing flood prediction scenario');
-    } finally {
-      setLoading(false);
-    }
+  const run = async () => {
+    setLoading(true); setError(null);
+    try { setForecast(await api.predictFlood({ rainfall_mm: rainfall, water_level_m: waterLevel, humidity_pct: humidity, temperature_c: temperature })); }
+    catch (err) { setError(err instanceof Error ? err.message : 'The forecast could not be computed.'); }
+    finally { setLoading(false); }
   };
-
-  const applyPreset = (r: number, w: number, h: number, t: number) => {
-    setRainfall(r);
-    setWaterLevel(w);
-    setHumidity(h);
-    setTemperature(t);
-  };
+  const apply = (v: [number, number, number, number]) => { setRainfall(v[0]); setWaterLevel(v[1]); setHumidity(v[2]); setTemperature(v[3]); };
+  const m = forecast?.evaluation_metrics;
 
   return (
     <div className="forecasting-container">
-      <div className="view-header">
-        <div>
-          <h2>AI Flood Risk Forecaster & Scenario Simulator</h2>
-          <p>
-            Powered by a validated RandomForest ML Classifier trained on 1,000 real-world sensor telemetry records
-            from <code>clean_flood_prediction_data.csv</code>.
-          </p>
-        </div>
-        <div className="preset-buttons">
-          <span className="text-muted" style={{ fontSize: '12px', marginRight: '6px' }}>Presets:</span>
-          <button className="btn-secondary btn-sm" onClick={() => applyPreset(8.0, 1.8, 65.0, 30.0)}>
-            Light Monsoon
-          </button>
-          <button className="btn-secondary btn-sm" onClick={() => applyPreset(42.0, 4.5, 88.0, 26.0)}>
-            Storm Surge
-          </button>
-          <button className="btn-secondary btn-sm" onClick={() => applyPreset(95.0, 7.2, 98.0, 23.0)}>
-            Severe Cloudburst
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Flood risk forecasting"
+        description="A scenario tool: a classifier estimates flood risk from the inputs you set. It is not a live forecast and does not read current sensors."
+        meta={<><ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">Model trained on a 1,000-record historical dataset</span><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">Inputs are scenario values you choose</span></>} />
 
-      {error && <div className="notice-banner banner-error">{error}</div>}
-
-      <div className="forecasting-grid">
-        {/* Scenario Input Controls Card */}
-        <div className="panel scenario-card">
-          <div className="panel-title-bar">
-            <div>
-              <h3>Hydrological & Weather Inputs</h3>
-              <p>Adjust environmental telemetry to test downstream inundation probability</p>
-            </div>
-            <Sliders size={18} className="text-cyan" />
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSimulate();
-            }}
-            className="scenario-form"
-          >
-            {/* Rainfall Slider */}
-            <div className="slider-group">
-              <div className="slider-label">
-                <span>Rainfall Intensity</span>
-                <span className="slider-value font-mono text-cyan">{rainfall.toFixed(1)} mm/hr</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="120"
-                step="0.5"
-                value={rainfall}
-                onChange={(e) => setRainfall(parseFloat(e.target.value))}
-                className="range-slider"
-              />
-              <div className="slider-hints">
-                <span>0 mm (Dry)</span>
-                <span>35 mm (Heavy)</span>
-                <span>120 mm (Extreme Cloudburst)</span>
-              </div>
-            </div>
-
-            {/* Water Level Slider */}
-            <div className="slider-group">
-              <div className="slider-label">
-                <span>River / Drainage Water Level</span>
-                <span className="slider-value font-mono text-cyan">{waterLevel.toFixed(1)} meters</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.1"
-                value={waterLevel}
-                onChange={(e) => setWaterLevel(parseFloat(e.target.value))}
-                className="range-slider"
-              />
-              <div className="slider-hints">
-                <span>0 m (Empty)</span>
-                <span>3.0 m (Warning)</span>
-                <span>5.5+ m (Danger / Breach)</span>
-              </div>
-            </div>
-
-            {/* Humidity Slider */}
-            <div className="slider-group">
-              <div className="slider-label">
-                <span>Atmospheric Relative Humidity</span>
-                <span className="slider-value font-mono text-cyan">{humidity.toFixed(0)}%</span>
-              </div>
-              <input
-                type="range"
-                min="20"
-                max="100"
-                step="1"
-                value={humidity}
-                onChange={(e) => setHumidity(parseFloat(e.target.value))}
-                className="range-slider"
-              />
-              <div className="slider-hints">
-                <span>20% (Dry Air)</span>
-                <span>80% (Saturated)</span>
-                <span>100% (Dense Fog/Rain)</span>
-              </div>
-            </div>
-
-            {/* Temperature Slider */}
-            <div className="slider-group">
-              <div className="slider-label">
-                <span>Ambient Air Temperature</span>
-                <span className="slider-value font-mono text-cyan">{temperature.toFixed(1)}°C</span>
-              </div>
-              <input
-                type="range"
-                min="10"
-                max="45"
-                step="0.5"
-                value={temperature}
-                onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                className="range-slider"
-              />
-              <div className="slider-hints">
-                <span>10°C (Cold Front)</span>
-                <span>28°C (Normal)</span>
-                <span>45°C (Heatwave)</span>
-              </div>
-            </div>
-
-            <button type="submit" className="btn-primary btn-block" disabled={loading}>
-              {loading ? 'Evaluating Model Inferences...' : '▶ Compute AI Flood Forecast'}
-            </button>
+      <div className="fc-grid">
+        <Panel title="Scenario inputs" actions={<span className="rn-field-hint">Presets:</span>}>
+          <form className="fc-form" onSubmit={(e) => { e.preventDefault(); run(); }}>
+            <div className="fc-presets">{PRESETS.map((p) => <Button key={p.label} size="sm" onClick={() => apply(p.v)}>{p.label}</Button>)}</div>
+            <Slider id="fc-rain" label="Rainfall intensity" unit="mm/hr" value={rainfall} min={0} max={120} step={0.5} onChange={setRainfall} hints="0 dry, about 35 heavy, 120 extreme cloudburst" />
+            <Slider id="fc-level" label="Water level" unit="m" value={waterLevel} min={0} max={10} step={0.1} onChange={setWaterLevel} hints="Training labels flood risk above 4.21 m" />
+            <Slider id="fc-hum" label="Relative humidity" unit="%" value={humidity} min={20} max={100} step={1} onChange={setHumidity} hints="20 dry air to 100 saturated" />
+            <Slider id="fc-temp" label="Air temperature" unit="°C" value={temperature} min={10} max={45} step={0.5} onChange={setTemperature} hints="10 cold to 45 heatwave" />
+            <Button type="submit" variant="primary" block loading={loading}>Compute flood risk</Button>
           </form>
-        </div>
+        </Panel>
 
-        {/* Prediction Results & Explanation Card */}
-        <div className="panel results-card">
-          <div className="panel-title-bar">
-            <div>
-              <h3>AI Inference & Multi-Horizon Projections</h3>
-              <p>Model Confidence: {forecast?.confidence_level || 'run a scenario to see the model evaluation'}</p>
-            </div>
-            <TrendingUp size={18} className="text-emerald" />
-          </div>
-
-          {forecast ? (
-            <div className="prediction-content">
-              {/* Main Risk Status Box */}
-              <div className={`risk-result-banner risk-${forecast.risk_level.toLowerCase()}`}>
-                <div className="risk-banner-left">
-                  <div className="risk-tag">CLASSIFIED FLOOD RISK</div>
-                  <div className="risk-title">{forecast.risk_level}</div>
-                  <p className="risk-advisory">{forecast.advisory}</p>
-                </div>
-                <div className="risk-prob-circle">
-                  <span className="prob-big">{Math.round(forecast.probability * 100)}%</span>
-                  <span className="prob-label">Calibrated Score</span>
-                </div>
-              </div>
-
-              {/* Forecast Horizon Progress Bars (+30m, +45m, +60m) */}
-              <div className="horizons-container">
-                <h4>Dynamic Flood Horizon Outlook (Hydrological Runoff Surge Scenarios)</h4>
-                <div className="horizon-bar-item">
-                  <div className="horizon-meta">
-                    <span>+30 Minutes Projection</span>
-                    <span className="font-mono">{Math.round(forecast.horizon_30m * 100)}% probability</span>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.round(forecast.horizon_30m * 100)}%`,
-                        backgroundColor: forecast.horizon_30m > 0.7 ? '#ef4444' : forecast.horizon_30m > 0.4 ? '#f97316' : '#eab308',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="horizon-bar-item">
-                  <div className="horizon-meta">
-                    <span>+45 Minutes Projection</span>
-                    <span className="font-mono">{Math.round(forecast.horizon_45m * 100)}% probability</span>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.round(forecast.horizon_45m * 100)}%`,
-                        backgroundColor: forecast.horizon_45m > 0.7 ? '#ef4444' : forecast.horizon_45m > 0.4 ? '#f97316' : '#eab308',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="horizon-bar-item">
-                  <div className="horizon-meta">
-                    <span>+60 Minutes Projection</span>
-                    <span className="font-mono">{Math.round(forecast.horizon_60m * 100)}% probability</span>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.round(forecast.horizon_60m * 100)}%`,
-                        backgroundColor: forecast.horizon_60m > 0.7 ? '#ef4444' : forecast.horizon_60m > 0.4 ? '#f97316' : '#eab308',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Contributing Features */}
-              <div className="factors-section">
-                <h4>Contributing Feature Weights (Gini Importance)</h4>
-                <div className="factors-grid">
-                  {forecast.contributing_factors.map((f) => (
-                    <div key={f.factor} className="factor-pill">
-                      <div className="factor-name">{f.factor}</div>
-                      <div className="factor-impact">{f.impact}</div>
-                      <div className="factor-wt font-mono">Weight: {(f.weight * 100).toFixed(1)}%</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Model Validation & Evaluation Card */}
-              <div className="metrics-box">
-                <div className="metrics-header">
-                  <CheckCircle2 size={16} className="text-emerald" />
-                  <strong>Empirical Machine Learning Validation & Audit Metrics</strong>
-                </div>
-                <div className="metrics-row">
-                  <div><strong>Holdout Acc:</strong> {(forecast.evaluation_metrics.accuracy * 100).toFixed(1)}%</div>
-                  {forecast.evaluation_metrics.cv_5fold_accuracy_mean !== undefined && (
-                    <div><strong>5-Fold CV:</strong> {(forecast.evaluation_metrics.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±{((forecast.evaluation_metrics.cv_5fold_accuracy_std ?? 0) * 100).toFixed(1)}%)</div>
-                  )}
-                  <div><strong>Precision:</strong> {(forecast.evaluation_metrics.precision * 100).toFixed(1)}%</div>
-                  <div><strong>Recall:</strong> {(forecast.evaluation_metrics.recall * 100).toFixed(1)}%</div>
-                  <div><strong>ROC-AUC:</strong> {forecast.evaluation_metrics.roc_auc.toFixed(3)}</div>
-                  <div><strong>Holdout Test:</strong> {forecast.evaluation_metrics.test_samples} samples</div>
-                </div>
-                {forecast.evaluation_metrics.confusion_matrix && (
-                  <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px', fontSize: '11px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-                    <span style={{ color: '#38bdf8', fontWeight: 600 }}>Confusion Matrix (Holdout):</span>
-                    <span className="font-mono">TN: {forecast.evaluation_metrics.confusion_matrix[0][0]}</span>
-                    <span className="font-mono">FP: {forecast.evaluation_metrics.confusion_matrix[0][1]}</span>
-                    <span className="font-mono">FN: {forecast.evaluation_metrics.confusion_matrix[1][0]}</span>
-                    <span className="font-mono">TP: {forecast.evaluation_metrics.confusion_matrix[1][1]}</span>
-                  </div>
-                )}
-                {forecast.evaluation_metrics.evaluation_suite && (
-                  <div style={{ marginTop: '10px', fontSize: '11px' }}>
-                    <div style={{ color: '#38bdf8', fontWeight: 600, marginBottom: '4px' }}>Honest evaluation (5-fold CV)</div>
-                    <table className="data-table" style={{ fontSize: '11px' }}>
-                      <thead>
-                        <tr><th>TEST</th><th>ACCURACY</th><th>F1</th><th>ROC-AUC</th></tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(forecast.evaluation_metrics.evaluation_suite).map(([name, r]) => (
-                          <tr key={name} title={r.description}>
-                            <td>{SUITE_LABELS[name] || name}</td>
-                            <td className="font-mono">{(r.accuracy_mean * 100).toFixed(1)}%</td>
-                            <td className="font-mono">{r.f1_mean.toFixed(2)}</td>
-                            <td className="font-mono">{r.roc_auc_mean.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="text-muted" style={{ marginTop: '4px' }}>
-                      The label is water level &gt; 4.21 m, so the all-inputs score of 100% is leakage. The served model uses
-                      weather only. Next-hour forecasting is near chance because the dataset rows are independent hours.
-                    </div>
-                  </div>
-                )}
-                <div className="metrics-footnote" style={{ fontSize: '11px', color: '#94a3b8', marginTop: '8px', lineHeight: '1.4' }}>
-                  Trained with scikit-learn on <code>{forecast.data_source}</code> (1,000 gauge readings, STATION_HYDRO_04).
-                  <br />
-                  <span style={{ color: '#38bdf8' }}>Audit Finding:</span> The 100% classification metric reflects a deterministic water-level boundary (&gt;4.21m = flood risk) in this curated benchmark. 30–60 minute horizon projections are physical hydrological runoff surge scenarios, not multi-step ML predictions.
-                </div>
-              </div>
-            </div>
+        <Panel title="Result">
+          {error ? <ErrorState message={error} onRetry={run} /> : !forecast ? (
+            <EmptyState title="No scenario computed yet" icon={<Activity size={22} />}>Adjust the inputs and compute to see the classification, probability and model details.</EmptyState>
           ) : (
-            <div className="empty-forecast-prompt">
-              <Activity size={36} className="text-muted" />
-              <p>Adjust inputs and click "Compute AI Flood Forecast" to run the model.</p>
+            <div className="fc-result">
+              {forecast.is_example_scenario && <StatusBadge tone="warn">Example scenario, not current conditions</StatusBadge>}
+              <div className="fc-banner">
+                <div>
+                  <span className="fc-eyebrow">Current risk classification</span>
+                  <div className="fc-risk"><SeverityBadge severity={forecast.risk_level} /></div>
+                  <p className="fc-advice">{forecast.advisory}</p>
+                </div>
+                <div className="fc-prob" aria-label={`Model probability ${pct(forecast.probability)}`}>
+                  <strong>{pct(forecast.probability)}</strong>
+                  <span>model probability</span>
+                </div>
+              </div>
+
+              <section aria-labelledby="fc-h-horizon">
+                <h3 id="fc-h-horizon">Scenario projections <ProvenanceBadge kind="SIMULATED" /></h3>
+                <p className="rn-field-hint">+30, +45 and +60 minute values come from a fixed heuristic runoff formula applied to your inputs. They are <strong>not</strong> independently validated forecasts and are not predictions of the trained model.</p>
+                {([['+30 minutes', forecast.horizon_30m], ['+45 minutes', forecast.horizon_45m], ['+60 minutes', forecast.horizon_60m]] as const).map(([label, v]) => (
+                  <div key={label} className="fc-bar">
+                    <div className="fc-bar-top"><span>{label}</span><span className="auth-mono">{pct(v)}</span></div>
+                    <div className="progress-track" role="img" aria-label={`${label}: ${pct(v)}`}><div className="progress-fill" style={{ width: pct(v), background: v > 0.7 ? 'var(--sev-critical)' : v > 0.4 ? 'var(--sev-high)' : 'var(--sev-moderate)' }} /></div>
+                  </div>
+                ))}
+              </section>
+
+              <section aria-labelledby="fc-h-model">
+                <h3 id="fc-h-model">Model information</h3>
+                <dl className="fc-dl">
+                  <dt>Model</dt><dd>{forecast.model_name} ({m?.model_architecture})</dd>
+                  <dt>Confidence note</dt><dd>{forecast.confidence_level}</dd>
+                  <dt>Training data</dt><dd><code>{forecast.data_source}</code> · {m?.training_samples} training / {m?.test_samples} test records</dd>
+                  <dt>Inputs used</dt><dd>{m?.model_inputs?.join(', ') ?? 'weather inputs'}</dd>
+                </dl>
+              </section>
+
+              <section aria-labelledby="fc-h-why">
+                <h3 id="fc-h-why">Contributing factors</h3>
+                <div className="rn-table-wrap"><table className="rn-table"><caption className="rn-sr">Contributing factors</caption>
+                  <thead><tr><th scope="col">Factor</th><th scope="col">Effect</th><th scope="col">Importance</th></tr></thead>
+                  <tbody>{forecast.contributing_factors.map((f) => <tr key={f.factor}><td>{f.factor}</td><td>{f.impact}</td><td className="auth-mono">{(f.weight * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
+              </section>
+
+              {m && (
+                <section aria-labelledby="fc-h-val">
+                  <h3 id="fc-h-val">Validation and limitations</h3>
+                  <p className="rn-field-hint">Measured on a held-out part of the same historical dataset. These figures describe this dataset only, not performance on real future events.</p>
+                  <dl className="fc-dl fc-metrics">
+                    <dt>Hold-out accuracy</dt><dd>{(m.accuracy * 100).toFixed(1)}%</dd>
+                    {m.cv_5fold_accuracy_mean !== undefined && (<><dt>5-fold cross-validation</dt><dd>{(m.cv_5fold_accuracy_mean * 100).toFixed(1)}% (±{((m.cv_5fold_accuracy_std ?? 0) * 100).toFixed(1)})</dd></>)}
+                    <dt>Precision / recall</dt><dd>{(m.precision * 100).toFixed(1)}% / {(m.recall * 100).toFixed(1)}%</dd>
+                    <dt>ROC-AUC</dt><dd>{m.roc_auc.toFixed(3)}</dd>
+                    {m.confusion_matrix && (<><dt>Confusion matrix</dt><dd className="auth-mono">TN {m.confusion_matrix[0][0]} · FP {m.confusion_matrix[0][1]} · FN {m.confusion_matrix[1][0]} · TP {m.confusion_matrix[1][1]}</dd></>)}
+                  </dl>
+                  {m.evaluation_suite && (
+                    <div className="rn-table-wrap"><table className="rn-table"><caption className="rn-sr">Evaluation suite</caption>
+                      <thead><tr><th scope="col">Test</th><th scope="col">Accuracy</th><th scope="col">F1</th><th scope="col">ROC-AUC</th></tr></thead>
+                      <tbody>{Object.entries(m.evaluation_suite).map(([name, r]) => (
+                        <tr key={name} title={r.description}><td>{SUITE_LABELS[name] || name}</td><td className="auth-mono">{(r.accuracy_mean * 100).toFixed(1)}%</td><td className="auth-mono">{r.f1_mean.toFixed(2)}</td><td className="auth-mono">{r.roc_auc_mean.toFixed(2)}</td></tr>))}</tbody></table></div>
+                  )}
+                  <div className="fc-limits" role="note"><Info size={16} aria-hidden="true" />
+                    <p>The label is “water level above 4.21 m”, so any score that uses the water level is near-perfect because of leakage. The served model uses weather inputs only. Next-hour forecasting is close to chance because the dataset rows are independent hours. Treat the output as a demonstration of the method, not an operational warning.</p></div>
+                </section>
+              )}
             </div>
           )}
-        </div>
+        </Panel>
       </div>
     </div>
   );

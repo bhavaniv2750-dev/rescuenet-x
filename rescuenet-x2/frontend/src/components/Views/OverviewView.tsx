@@ -1,5 +1,6 @@
 import React from 'react';
 import type { DashboardData, Incident } from '../../api/types';
+import { DataNotice, SeverityBadge } from '../ui';
 import { InteractiveMap } from '../Map/InteractiveMap';
 import { AlertTriangle, ShieldCheck, Users, LifeBuoy, Bell, Activity, ArrowRight } from 'lucide-react';
 
@@ -42,6 +43,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <div className="overview-container">
+      <h1 className="rn-sr">Mission control overview</h1>
+      <DataNotice items={incidents} noun="incidents" />
       {/* Top Telemetry KPI Bar */}
       <div className="metrics-grid">
         <div className="metric-card border-orange">
@@ -53,7 +56,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <span className="metric-number">{String(summary?.active_incidents || 0).padStart(2, '0')}</span>
             <span className="metric-badge badge-orange">{summary?.critical_alerts || 0} Critical</span>
           </div>
-          <div className="metric-footer">Tracked in persistent SQLite DB</div>
+          <div className="metric-footer">Records held in the RescueNet database</div>
         </div>
 
         <div className="metric-card border-red">
@@ -65,19 +68,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <span className="metric-number">{summary?.people_affected || 0}</span>
             <span className="metric-badge badge-blue">{summary?.people_rescued || 0} Rescued</span>
           </div>
-          <div className="metric-footer">Reported via Citizen & LoRa SOS</div>
+          <div className="metric-footer">From citizen reports and LoRa SOS packets</div>
         </div>
 
         <div className="metric-card border-blue">
           <div className="metric-header">
-            <span>RESPONSE TEAMS</span>
+            <span>SQUADS AVAILABLE</span>
             <LifeBuoy className="icon text-blue" size={18} />
           </div>
           <div className="metric-body">
             <span className="metric-number">{String(summary?.response_teams.available || 0).padStart(2, '0')}</span>
-            <span className="metric-sub">/ {summary?.response_teams.total || 0} deployed</span>
+            <span className="metric-sub">of {summary?.response_teams.total || 0} squads</span>
           </div>
-          <div className="metric-footer">NDRF, SDRF & Fire Squads ready</div>
+          <div className="metric-footer">Squads currently marked available</div>
         </div>
 
         <div className="metric-card border-emerald">
@@ -89,7 +92,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <span className="metric-number">{summary?.facilities.available_beds || 0}</span>
             <span className="metric-sub">open beds</span>
           </div>
-          <div className="metric-footer">{summary?.facilities.total || 0} relief centers & hospitals active</div>
+          <div className="metric-footer">{summary?.facilities.total || 0} facilities listed</div>
         </div>
       </div>
 
@@ -187,7 +190,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <div className="incident-details">
                     <div className="incident-row-top">
                       <span className="incident-code">{inc.id}</span>
-                      <span className={`status-pill pill-${inc.severity.toLowerCase()}`}>{inc.severity}</span>
+                      <SeverityBadge severity={inc.severity} />
                     </div>
                     <div className="incident-location">{inc.location}</div>
                     <div className="incident-meta">
@@ -213,7 +216,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {data.active_alerts_feed.map((alt) => (
               <div key={alt.id} className="mini-alert-card">
                 <div className="mini-alert-top">
-                  <span className={`pill-alert-${alt.severity.toLowerCase()}`}>{alt.severity}</span>
+                  <SeverityBadge severity={alt.severity} />
                   <span className="text-muted font-mono">{alt.id}</span>
                 </div>
                 <div className="mini-alert-title">{alt.title}</div>

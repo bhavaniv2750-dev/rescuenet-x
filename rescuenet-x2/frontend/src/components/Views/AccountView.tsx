@@ -1,3 +1,4 @@
+import { Button, PageHeader } from '../ui';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -161,15 +162,7 @@ export const AccountView: React.FC = () => {
 
   return (
     <div className="account-view">
-      <div className="view-header">
-        <div>
-          <h2>My Account</h2>
-          <p>Your profile and sign-in settings.</p>
-        </div>
-        <button className="btn-secondary" onClick={logout}>
-          Sign out
-        </button>
-      </div>
+      <PageHeader title="My account and security" description="Your profile, sign-in security and active sessions." actions={<Button onClick={logout}>Sign out</Button>} />
 
       <div className="two-col">
         <section className="panel">
@@ -190,6 +183,7 @@ export const AccountView: React.FC = () => {
               {user.volunteer_verified
                 ? 'You are a verified volunteer and can be assigned to rescues.'
                 : 'Waiting for a coordinator to verify you. You can be assigned to rescues after that.'}
+              {' '}Assignments to rescues are arranged by the control room by phone or email; this website does not show a personal assignment list yet.
             </div>
           )}
         </section>

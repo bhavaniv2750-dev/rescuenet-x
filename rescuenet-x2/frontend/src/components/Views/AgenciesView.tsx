@@ -72,7 +72,7 @@ export const AgenciesView: React.FC = () => {
     <div className="admin-console">
       <div className="view-header">
         <div>
-          <h2>Agencies &amp; invitations</h2>
+          <h1>Agencies &amp; invitations</h1>
           <p className="muted">Agencies are labels for the organisation people and squads belong to. They do not grant or limit access.</p>
         </div>
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /> Refresh</button>

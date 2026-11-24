@@ -50,6 +50,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [showGauges, setShowGauges] = useState(true);
   const [showAlerts, setShowAlerts] = useState(true);
   const [tileError, setTileError] = useState(false);
+  const [layersOpen, setLayersOpen] = useState<boolean>(() => typeof window === 'undefined' || window.innerWidth > 760);
 
   // Initialize Map
   useEffect(() => {
@@ -404,135 +405,39 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     }
   };
 
+  const toggles: { label: string; swatch: string; color: string; on: boolean; set: (v: boolean) => void; n: number }[] = [
+    { label: 'Catchments', swatch: '▰', color: '#22b8cf', on: showCatchments, set: setShowCatchments, n: catchmentsGeoJSON?.features?.length || 0 },
+    { label: 'Incidents', swatch: '●', color: '#ff6b6b', on: showIncidents, set: setShowIncidents, n: incidents.length },
+    { label: 'Rescue teams', swatch: '✚', color: '#6cb6ff', on: showTeams, set: setShowTeams, n: teams.length },
+    { label: 'Shelters', swatch: '■', color: '#34d399', on: showFacilities, set: setShowFacilities, n: facilities.length },
+    { label: 'River gauges', swatch: '◆', color: '#7dd3fc', on: showGauges, set: setShowGauges, n: gauges.length },
+    { label: 'Alert areas', swatch: '◎', color: '#ff9f43', on: showAlerts, set: setShowAlerts, n: alerts.filter((a) => a.status !== 'RESOLVED').length },
+  ];
+
   return (
-    <div className="relative-map-container" style={{ position: 'relative', height, width: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-      <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
+    <div className="rn-map-frame map-host" style={{ height }} role="region" aria-label="Interactive map">
+      <div ref={mapContainerRef} className="map-canvas" />
 
-      {/* Layer Control Overlay Bar */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.92)',
-          backdropFilter: 'blur(8px)',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          display: 'flex',
-          gap: '12px',
-          alignItems: 'center',
-          fontSize: '12px',
-          color: '#cbd5e1',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-        }}
-      >
-        {tileError && (
-          <div
-            style={{
-              background: '#7f1d1d',
-              color: '#fecaca',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontWeight: 600,
-              fontSize: '11px',
-            }}
-            title="External tile network unreachable. Local vector overlays, catchments, and pins are displayed."
-          >
-            Offline Tiles Mode
-          </div>
-        )}
-        <button
-          onClick={handleResetView}
-          style={{
-            background: '#0284c7',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '4px 8px',
-            cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: '11px',
-          }}
-          title="Zoom to Bengaluru City"
-        >
-          ⌖ Bengaluru
-        </button>
+      <details className="map-layers" open={layersOpen} onToggle={(e) => setLayersOpen((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary>Layers</summary>
+        <div className="map-layers-body" role="group" aria-label="Map layers">
+          {toggles.map((t) => (
+            <label key={t.label} className="map-toggle">
+              <input type="checkbox" checked={t.on} onChange={(e) => t.set(e.target.checked)} />
+              <span className="map-swatch" style={{ color: t.color }} aria-hidden="true">{t.swatch}</span>
+              <span>{t.label}</span>
+              <span className="map-count">{t.n}</span>
+            </label>
+          ))}
+          <button type="button" className="rn-btn rn-btn-secondary rn-btn-sm" onClick={handleResetView}>Reset view (Bengaluru)</button>
+        </div>
+      </details>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showCatchments}
-            onChange={(e) => setShowCatchments(e.target.checked)}
-          />
-          <span style={{ color: '#06b6d4' }}>●</span> Catchments ({catchmentsGeoJSON?.features?.length || 0})
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showIncidents}
-            onChange={(e) => setShowIncidents(e.target.checked)}
-          />
-          <span style={{ color: '#ef4444' }}>●</span> Incidents ({incidents.length})
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showTeams}
-            onChange={(e) => setShowTeams(e.target.checked)}
-          />
-          <span style={{ color: '#3b82f6' }}>✚</span> Teams ({teams.length})
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showFacilities}
-            onChange={(e) => setShowFacilities(e.target.checked)}
-          />
-          <span style={{ color: '#10b981' }}>●</span> Shelters ({facilities.length})
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showGauges}
-            onChange={(e) => setShowGauges(e.target.checked)}
-          />
-          <span style={{ color: '#0284c7' }}>◆</span> Gauges ({gauges.length})
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showAlerts}
-            onChange={(e) => setShowAlerts(e.target.checked)}
-          />
-          <span style={{ color: '#f97316' }}>◎</span> Alerts ({alerts.filter((a) => a.status !== 'RESOLVED').length})
-        </label>
-      </div>
-
-      {/* Map Legend Footer */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 10,
-          left: 12,
-          zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.85)',
-          padding: '4px 10px',
-          borderRadius: '4px',
-          fontSize: '11px',
-          color: '#94a3b8',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          pointerEvents: 'none',
-        }}
-      >
-        IndoFloods Catchments GIS & IndoFloods Gauge Network · Interactive GeoJSON Layer
-      </div>
+      {tileError && (
+        <div className="rn-map-notice" role="status">
+          Base map unavailable: the map could not reach OpenStreetMap. Pins and polygons below are still drawn at their true positions; only the background tiles are missing.
+        </div>
+      )}
     </div>
   );
 };

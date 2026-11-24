@@ -1,3 +1,4 @@
+import { DataNotice } from '../ui';
 import React, { useState, useEffect } from 'react';
 import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
@@ -10,14 +11,14 @@ export const RescueRecordsView: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Form
-  const [incidentId, setIncidentId] = useState('INC-1042');
-  const [teamId, setTeamId] = useState('TEAM-NDRF-10');
-  const [location, setLocation] = useState('Devasandra Lowlands, KR Puram');
-  const [peopleRescued, setPeopleRescued] = useState(12);
-  const [survivors, setSurvivors] = useState(12);
-  const [severeInjuries, setSevereInjuries] = useState(1);
-  const [minorInjuries, setMinorInjuries] = useState(3);
-  const [notes, setNotes] = useState('Successfully completed evacuation of 3 residential clusters using inflatable boat.');
+  const [incidentId, setIncidentId] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [location, setLocation] = useState('');
+  const [peopleRescued, setPeopleRescued] = useState(0);
+  const [survivors, setSurvivors] = useState(0);
+  const [severeInjuries, setSevereInjuries] = useState(0);
+  const [minorInjuries, setMinorInjuries] = useState(0);
+  const [notes, setNotes] = useState('');
   const missing = 0;
   const deceased = 0;
 
@@ -141,9 +142,10 @@ export const RescueRecordsView: React.FC = () => {
 
   return (
     <div className="records-container">
+      <DataNotice items={records as { data_label?: string }[]} noun="rescue records" />
       <div className="view-header">
         <div>
-          <h2>Operational Rescue Records & Mission Outcomes</h2>
+          <h1>Operational Rescue Records & Mission Outcomes</h1>
           <p>
             Certified mission debrief logs, survivor tallies, casualty tracking, and responder assignment records.
           </p>

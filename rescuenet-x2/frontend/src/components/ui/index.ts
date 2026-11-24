@@ -9,3 +9,4 @@ export * from './Pagination';
 export * from './PageHeader';
 export * from './DataTable';
 export * from './MapFrame';
+export * from './DataNotice';

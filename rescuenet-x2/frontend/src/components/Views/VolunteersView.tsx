@@ -1,3 +1,4 @@
+import { DataNotice } from '../ui';
 import React, { useState } from 'react';
 import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
@@ -87,9 +88,10 @@ export const VolunteersView: React.FC<VolunteersViewProps> = ({ volunteers, inci
 
   return (
     <div className="volunteers-container">
+      <DataNotice items={volunteers as { data_label?: string }[]} noun="volunteers" />
       <div className="view-header">
         <div>
-          <h2>Verified Volunteer & Civilian Response Network</h2>
+          <h1>Verified Volunteer & Civilian Response Network</h1>
           <p>
             Civilian response force with verified swim credentials, medical skills, and emergency coordination.
           </p>

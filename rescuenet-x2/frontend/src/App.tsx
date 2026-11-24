@@ -4,8 +4,8 @@ import type { Alert, DashboardData, Facility, Incident, RescueTeam, RiverGauge, 
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { can, homePageOf, navSections, pageForPath, pathForPage } from './auth/access';
 import type { Page } from './auth/access';
-import { Sidebar } from './components/Layout/Sidebar';
-import { Topbar } from './components/Layout/Topbar';
+import { ConsoleShell } from './components/Layout/ConsoleShell';
+import { PublicShell } from './components/Layout/PublicShell';
 import { LoginPage } from './components/Auth/LoginPage';
 import { Toaster } from './components/UI/Toaster';
 import { OverviewView } from './components/Views/OverviewView';
@@ -88,7 +88,6 @@ function Shell() {
   // The server decides the workspace. A signed-in user's arrives with the user (no flash of the wrong navigation); a guest's is
   // fetched. Until it is known nothing is offered.
   const workspace: Workspace | null = user ? user.workspace ?? null : guest ? guestWorkspace : null;
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [backendStatus, setBackendStatus] = useState('Checking...');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -265,43 +264,9 @@ function Shell() {
 
   const intakeOnly = !can(workspace, 'manage_incidents');
 
-  return (
-    <div className="app-shell">
-      <Sidebar
-        sections={sections}
-        activePage={activePage}
-        onNavigate={navigate}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        backendStatus={backendStatus}
-        badges={badges}
-      />
+  const content = (
+    <>
 
-      <div className="app-main">
-        <Topbar
-          activePage={activePage}
-          user={user}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          onRefresh={loadAllData}
-          onReport={goReport}
-          onOpenAccount={() => navigate('My Account')}
-          onSignIn={() => setGuestMode(false)}
-          onSignOut={logout}
-          refreshing={refreshing}
-          backendStatus={backendStatus}
-        />
-
-        {guest && !user && (
-          <div className="guest-banner">
-            You are browsing without an account.{' '}
-            <button className="link-btn" onClick={() => setGuestMode(false)}>
-              Sign in
-            </button>{' '}
-            to track your reports.
-          </div>
-        )}
-
-        <main className="page-viewport" key={activePage}>
           {receipt && <ReportReceipt receipt={receipt} onClose={() => setReceipt(null)} />}
           {activePage === 'Home' && (
             <PublicHomeView alerts={alerts} gauges={gauges} facilities={facilities} userName={user?.full_name} onNavigate={navigate} />
@@ -367,10 +332,31 @@ function Shell() {
           {activePage === 'Settings' && <SettingsView backendStatus={backendStatus} onRefresh={loadAllData} />}
 
           {activePage === 'My Account' && <AccountView />}
-        </main>
-      </div>
+            </>
+  );
 
+  const canReport = Boolean(pathForPage(workspace, 'Report Emergency') || pathForPage(workspace, 'Incident Reports'));
+  const guestBanner = guest && !user ? (
+    <div className="guest-banner">
+      You are browsing without an account.{' '}
+      <button className="link-btn" onClick={() => setGuestMode(false)}>Sign in</button> to track your reports.
     </div>
+  ) : null;
+
+  // Two layout shells over the same pages, API client, session and permissions. The server's workspace picks the experience.
+  if (workspace.experience === 'PUBLIC') {
+    return (
+      <PublicShell sections={sections} activePage={activePage} onNavigate={navigate} user={user} onSignIn={() => setGuestMode(false)} onSignOut={logout}
+        onReport={() => navigate('Report Emergency')} badges={badges} banner={guestBanner}>
+        {content}
+      </PublicShell>
+    );
+  }
+  return (
+    <ConsoleShell sections={sections} activePage={activePage} onNavigate={navigate} user={user} backendStatus={backendStatus} refreshing={refreshing}
+      onRefresh={loadAllData} onReport={canReport ? goReport : undefined} onSignOut={logout} badges={badges}>
+      {content}
+    </ConsoleShell>
   );
 }
 

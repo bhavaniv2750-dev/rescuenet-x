@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Facility, Incident, RescueTeam, RiverGauge } from '../../api/types';
 import { InteractiveMap } from '../Map/InteractiveMap';
-import { Layers, MapPin, Waves } from 'lucide-react';
+import { Button, DataTable, PageHeader, Panel, ProvenanceBadge, SelectField, StatusBadge } from '../ui';
 
 interface DigitalTwinViewProps {
   catchmentsGeoJSON: any;
@@ -31,111 +31,34 @@ export const DigitalTwinView: React.FC<DigitalTwinViewProps> = ({
 
   return (
     <div className="digital-twin-container">
-      <div className="view-header">
-        <div>
-          <h2>Flood Digital Twin · GIS Intelligence</h2>
-          <p>
-            Real IndoFloods river catchment polygons, Central Water Commission gauge telemetry,
-            and RescueNet operational assets across Karnataka.
-          </p>
-        </div>
-        <div className="stats-badges">
-          <span className="badge"><Layers size={14} /> {catchmentsGeoJSON?.features?.length || 5} Catchments</span>
-          <span className="badge"><Waves size={14} /> {gauges.length} River Gauges</span>
-          <span className="badge"><MapPin size={14} /> {incidents.length} Active Pins</span>
-        </div>
-      </div>
+      <PageHeader title="Flood digital twin"
+        description="A map of river catchments, gauge stations and operational assets. It is a GIS visualisation: it does not simulate hydrology and does not show live water levels."
+        meta={<>
+          <ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">catchment polygons and gauge thresholds (IndoFloods)</span>
+          {incidents.length > 0 && <><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">incident and team pins are seeded demonstration records</span></>}
+        </>}
+        actions={<><StatusBadge tone="info">{catchmentsGeoJSON?.features?.length ?? 0} catchments</StatusBadge><StatusBadge tone="info">{gauges.length} gauges</StatusBadge><StatusBadge tone="info">{incidents.length} incident pins</StatusBadge></>} />
 
       <div className="twin-layout-grid">
-        {/* Full-width Map Canvas */}
-        <div className="panel map-full-card">
-          <InteractiveMap
-            incidents={incidents}
-            teams={teams}
-            facilities={facilities}
-            gauges={filteredGauges}
-            catchmentsGeoJSON={catchmentsGeoJSON}
-            alerts={alerts}
-            height="560px"
-            center={selectedGauge ? [selectedGauge.latitude, selectedGauge.longitude] : [12.9716, 77.5946]}
-            zoom={selectedGauge ? 13 : 10}
-          />
-        </div>
+        <InteractiveMap incidents={incidents} teams={teams} facilities={facilities} gauges={filteredGauges} catchmentsGeoJSON={catchmentsGeoJSON} alerts={alerts}
+          height="clamp(340px, 62vh, 680px)" center={selectedGauge ? [selectedGauge.latitude, selectedGauge.longitude] : [12.9716, 77.5946]} zoom={selectedGauge ? 13 : 10} />
 
-        {/* River Gauge Telemetry Table */}
-        <div className="panel gauge-table-card">
-          <div className="panel-title-bar">
-            <div>
-              <h3>Karnataka River Monitoring Gauges</h3>
-              <p>Warning & Danger threshold monitoring from IndoFloods</p>
-            </div>
-            <select
-              className="select-input"
-              value={filterRiver}
-              onChange={(e) => setFilterRiver(e.target.value)}
-              style={{ maxWidth: '200px' }}
-            >
-              {uniqueRivers.map((r) => (
-                <option key={r} value={r}>
-                  {r === 'ALL' ? 'All Rivers & Tributaries' : r}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>STATION</th>
-                  <th>RIVER / BASIN</th>
-                  <th>WARNING LVL</th>
-                  <th>DANGER LVL</th>
-                  <th>COORDINATES</th>
-                  <th>STATUS</th>
-                  <th>ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredGauges.slice(0, 10).map((gauge) => (
-                  <tr key={gauge.gauge_id} className={selectedGauge?.gauge_id === gauge.gauge_id ? 'row-selected' : ''}>
-                    <td>
-                      <strong>{gauge.station_name}</strong>
-                      <div className="text-muted font-mono" style={{ fontSize: '11px' }}>{gauge.gauge_id}</div>
-                    </td>
-                    <td>
-                      <div>{gauge.river}</div>
-                      <div className="text-muted" style={{ fontSize: '11px' }}>{gauge.basin}</div>
-                    </td>
-                    <td>
-                      <span className="text-yellow font-mono font-bold">{gauge.warning_level_m} m</span>
-                    </td>
-                    <td>
-                      <span className="text-red font-mono font-bold">{gauge.danger_level_m} m</span>
-                    </td>
-                    <td className="font-mono text-muted" style={{ fontSize: '11px' }}>
-                      {gauge.latitude.toFixed(3)}, {gauge.longitude.toFixed(3)}
-                    </td>
-                    <td>
-                      <span className="status-pill pill-active">MONITORING</span>
-                    </td>
-                    <td>
-                      <button
-                        className="btn-outline btn-xs"
-                        onClick={() => setSelectedGauge(gauge)}
-                      >
-                        Locate
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="table-footer-note">
-            Showing 10 of {filteredGauges.length} stations. Coordinates mapped directly from IndoFloods dataset.
-          </div>
-        </div>
+        <Panel title="River gauge stations" actions={
+          <SelectField label="River" value={filterRiver} onChange={(e) => setFilterRiver(e.target.value)}>
+            {uniqueRivers.map((r) => <option key={r} value={r}>{r === 'ALL' ? 'All rivers and tributaries' : r}</option>)}
+          </SelectField>} flush>
+          <p className="rn-field-hint" style={{ padding: 'var(--sp-3) var(--sp-4) 0' }}>Warning and danger levels are reference thresholds from the dataset. No live water-level feed is connected, so a current reading is not available.</p>
+          <DataTable caption="River gauge stations" rows={filteredGauges.slice(0, 10)} rowKey={(g) => g.gauge_id}
+            columns={[
+              { key: 's', header: 'Station', render: (g) => <><strong>{g.station_name}</strong><div className="rn-field-hint auth-mono">{g.gauge_id}</div></> },
+              { key: 'r', header: 'River / basin', render: (g) => <>{g.river}<div className="rn-field-hint">{g.basin}</div></> },
+              { key: 'w', header: 'Warning level', render: (g) => <span className="auth-mono">{g.warning_level_m} m</span> },
+              { key: 'd', header: 'Danger level', render: (g) => <span className="auth-mono">{g.danger_level_m} m</span> },
+              { key: 'l', header: 'Live reading', render: () => <ProvenanceBadge kind="UNAVAILABLE" /> },
+              { key: 'a', header: 'Map', render: (g) => <Button size="sm" onClick={() => setSelectedGauge(g)} aria-label={`Locate ${g.station_name} on the map`}>Locate</Button> },
+            ]} />
+          <div className="rn-field-hint" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>Showing {Math.min(10, filteredGauges.length)} of {filteredGauges.length} stations.</div>
+        </Panel>
       </div>
     </div>
   );

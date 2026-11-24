@@ -70,7 +70,7 @@ export const AdminConsoleView: React.FC<Props> = ({ canManageUsers, teams }) => 
     <div className="admin-console">
       <div className="view-header">
         <div>
-          <h2>{canManageUsers ? 'Admin Console' : 'Audit Log'}</h2>
+          <h1>{canManageUsers ? 'Admin Console' : 'Audit Log'}</h1>
           <p>{canManageUsers ? 'Manage accounts and review who did what.' : 'Who did what, and when.'}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

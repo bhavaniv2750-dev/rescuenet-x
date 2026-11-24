@@ -1,3 +1,4 @@
+import { DataNotice, SeverityBadge } from '../ui';
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Building2, LocateFixed, Phone, Search, Siren, Waves } from 'lucide-react';
 import { api } from '../../api/client';
@@ -11,8 +12,6 @@ interface Props {
   userName?: string;
   onNavigate: (page: Page) => void;
 }
-
-const SEV_CLASS: Record<string, string> = { CRITICAL: 'sev-critical', HIGH: 'sev-high', WARNING: 'sev-warning', INFO: 'sev-info' };
 
 const EMERGENCY_NUMBERS = [
   { n: '112', label: 'All emergencies' },
@@ -114,6 +113,7 @@ export const PublicHomeView: React.FC<Props> = ({ alerts, gauges, facilities, us
 
   return (
     <div className="public-home">
+      <DataNotice items={alerts as { data_label?: string }[]} noun="warnings" />
       <section className="hero-card">
         <div>
           <h2>{userName ? `Hello, ${userName.split(' ')[0]}` : 'Flood watch for Bengaluru'}</h2>
@@ -150,7 +150,7 @@ export const PublicHomeView: React.FC<Props> = ({ alerts, gauges, facilities, us
             <ul className="plain-list">
               {active.slice(0, 4).map((a) => (
                 <li key={a.id} className="warning-row">
-                  <span className={`sev-tag ${SEV_CLASS[a.severity] || ''}`}>{a.severity}</span>
+                  <SeverityBadge severity={a.severity} />
                   <div>
                     <strong>{a.title}</strong>
                     <p>{a.message}</p>

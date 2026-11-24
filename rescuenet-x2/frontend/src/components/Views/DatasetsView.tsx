@@ -187,15 +187,15 @@ export const DatasetsView: React.FC = () => {
       {/* View Header */}
       <div className="view-header">
         <div>
-          <h2>Integrated Dataset Inventory & Model Provenance</h2>
+          <h1>Data and models</h1>
           <p>
-            Real workspace data repositories: IndoFloods Catchment Shapefiles, Gauge Telemetry,
-            Clean RescueNet LoRa SOS records, and Verified Flood Inundation Imagery.
+            The datasets and trained models in the project folder. Catchment shapes and gauge thresholds are <strong>historical</strong> public data; the LoRa SOS
+            records are <strong>simulated</strong>; no dataset here is a live feed. Metrics shown for models describe their own test data only, not real-world performance.
           </p>
         </div>
         <div className="stats-badges">
           <span className="badge">
-            <HardDrive size={14} /> {datasets.length} Active Datasets
+            <HardDrive size={14} /> {datasets.length} datasets
           </span>
           <span className="badge">
             <Database size={14} /> {totalRecords.toLocaleString()} Tabular Records
@@ -315,9 +315,9 @@ export const DatasetsView: React.FC = () => {
       <div className="section-title-bar" style={{ marginTop: '24px', marginBottom: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Database size={18} className="text-cyan" />
-          <h3 style={{ margin: 0, fontSize: '15px' }}>Verified Dataset Repositories</h3>
+          <h3 style={{ margin: 0, fontSize: '15px' }}>Datasets in the project folder</h3>
         </div>
-        <span className="font-mono text-xs text-muted">Direct Local Filesystem Provenance</span>
+        <span className="font-mono text-xs text-muted">Read from the server's local files; none is a live feed</span>
       </div>
 
       <div className="datasets-grid">

@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import type { Incident, WaterDepth } from '../../api/types';
 import { cleanMessage, toast } from '../../lib/toast';
 import { FloodPhotoAnalysis } from '../Vision/FloodPhotoAnalysis';
+import { InteractiveMap } from '../Map/InteractiveMap';
 import { actionsFor, humanStatus, statusPillClass } from '../../lib/lifecycle';
 import {
   AlertTriangle,
@@ -145,6 +146,16 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
     setUploadError(null);
   };
 
+  const [showPicker, setShowPicker] = useState(false);
+  const [locNote, setLocNote] = useState<string | null>(null);
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setLocNote('Your browser cannot share your location. Choose a preset, pick on the map or type coordinates.'); return; }
+    setLocNote('Asking your device for its location…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setLatitude(Number(pos.coords.latitude.toFixed(5))); setLongitude(Number(pos.coords.longitude.toFixed(5))); setLocNote(`Location set (accuracy about ${Math.round(pos.coords.accuracy)} m).`); },
+      () => setLocNote('Location was not shared. Choose a preset, pick on the map or type coordinates.'),
+      { enableHighAccuracy: true, timeout: 10000 });
+  };
   const handlePresetSelect = (preset: typeof PRESET_LOCATIONS[0]) => {
     setArea(`${preset.name}, Bengaluru`);
     setLatitude(preset.lat);
@@ -229,7 +240,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
       {/* View Header */}
       <div className="view-header">
         <div>
-          <h2>Incident Reporting, Triage & Verification</h2>
+          <h1>{intakeOnly ? 'Report an emergency' : 'Incident intake and verification'}</h1>
           <p>
             {intakeOnly
               ? 'Tell the rescue control room what is happening and where. If anyone is in immediate danger, call 112 first.'
@@ -338,6 +349,18 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                 ))}
               </div>
             </div>
+
+            <div className="loc-tools">
+              <button type="button" className="rn-btn rn-btn-secondary rn-btn-sm" onClick={useMyLocation}><MapPin size={14} aria-hidden="true" /> Use my current location</button>
+              <button type="button" className="rn-btn rn-btn-secondary rn-btn-sm" aria-expanded={showPicker} onClick={() => setShowPicker((v) => !v)}>{showPicker ? 'Hide map' : 'Pick on map'}</button>
+              {locNote && <span className="rn-field-hint" role="status">{locNote}</span>}
+            </div>
+            {showPicker && (
+              <div className="loc-picker">
+                <InteractiveMap height="280px" zoom={12} center={[Number.isFinite(latitude) ? latitude : 12.9716, Number.isFinite(longitude) ? longitude : 77.5946]}
+                  onMapClick={(c) => { setLatitude(Number(c.lat.toFixed(5))); setLongitude(Number(c.lng.toFixed(5))); setLocNote('Location set from the map. Check the coordinates below.'); }} />
+              </div>
+            )}
 
             <div className="form-row">
               <label>
@@ -541,9 +564,9 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
       {/* TAB 2: DIRECTORY & DETAIL VIEW */}
       {activeTab === 'directory' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '20px' }}>
+        <div className="incident-dir">
           {/* Left Column: Filter & List */}
-          <div className="panel" style={{ display: 'flex', flexDirection: 'column', height: '700px' }}>
+          <div className="panel incident-dir-list">
             <div style={{ marginBottom: '12px' }}>
               <div style={{ position: 'relative', marginBottom: '8px' }}>
                 <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: '#64748b' }} />

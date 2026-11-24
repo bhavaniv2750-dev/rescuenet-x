@@ -7,12 +7,17 @@ const SEV: Record<Severity, { icon: React.ElementType; label: string }> = {
   MODERATE: { icon: CircleAlert, label: 'Moderate' },
   LOW: { icon: Info, label: 'Low' },
 };
+/** Alert severities that use different words map onto the same four levels (same icon and colour, own label). */
+const ALIAS: Record<string, { level: Severity; label: string }> = { WARNING: { level: 'MODERATE', label: 'Warning' }, INFO: { level: 'LOW', label: 'Info' } };
 
 /** Severity is shown with a distinct icon shape AND a text label, never colour alone. */
 export const SeverityBadge: React.FC<{ severity: string; compact?: boolean }> = ({ severity, compact }) => {
-  const key = (severity || '').toUpperCase() as Severity;
-  const s = SEV[key];
-  if (!s) return <span className="rn-badge rn-badge-neutral">{severity || '—'}</span>;
+  const raw = (severity || '').toUpperCase();
+  const alias = ALIAS[raw];
+  const key = (alias ? alias.level : raw) as Severity;
+  const base = SEV[key];
+  if (!base) return <span className="rn-badge rn-badge-neutral">{severity || '—'}</span>;
+  const s = { ...base, label: alias ? alias.label : base.label };
   const Icon = s.icon;
   return (
     <span className={`rn-badge rn-sev rn-sev-${key.toLowerCase()}`} title={`Severity: ${s.label}`}>

@@ -1,3 +1,4 @@
+import { DataNotice } from '../ui';
 import React, { useState } from 'react';
 import { api } from '../../api/client';
 import { cleanMessage, toast } from '../../lib/toast';
@@ -57,9 +58,10 @@ export const FacilitiesView: React.FC<FacilitiesViewProps> = ({ facilities, onRe
 
   return (
     <div className="facilities-container">
+      <DataNotice items={facilities as { data_label?: string }[]} noun="facilities" />
       <div className="view-header">
         <div>
-          <h2>Emergency Facilities, Hospitals & Evacuation Shelters</h2>
+          <h1>Emergency Facilities, Hospitals & Evacuation Shelters</h1>
           <p>
             Shelter and hospital capacity, with distance from central Bengaluru. Entries marked SAMPLE are example data shipped with the project; staff-entered facilities are marked ENTERED.
           </p>

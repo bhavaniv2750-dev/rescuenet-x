@@ -3,6 +3,7 @@ import { cleanMessage, toast } from '../../lib/toast';
 import { api } from '../../api/client';
 import type { Incident, RescueTeam } from '../../api/types';
 import { Plus } from 'lucide-react';
+import { Button, DataNotice, Dialog, PageHeader, SearchField, SelectField, SeverityBadge } from '../ui';
 import { INCIDENT_STATES, actionsFor, humanStatus, needsCommanderApproval, statusPillClass } from '../../lib/lifecycle';
 import type { LifecycleAction } from '../../lib/lifecycle';
 
@@ -24,6 +25,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterSeverity, setFilterSeverity] = useState<string>('ALL');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   const statuses = INCIDENT_STATES;
   const availableTeams = teams.filter((t) => t.status === 'AVAILABLE');
@@ -79,24 +81,17 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
   const filteredIncidents = incidents.filter((inc) => {
     if (filterStatus !== 'ALL' && inc.status !== filterStatus) return false;
     if (filterSeverity !== 'ALL' && inc.severity !== filterSeverity) return false;
+    const q = query.trim().toLowerCase();
+    if (q && !`${inc.id} ${inc.title} ${inc.area} ${inc.assigned_team_id ?? ''}`.toLowerCase().includes(q)) return false;
     return true;
   });
 
   return (
     <div className="rescue-ops-container">
-      <div className="view-header">
-        <div>
-          <h2>Rescue Operations & Incident Dispatch Command</h2>
-          <p>
-            Lifecycle: <code>REPORTED → VERIFIED → QUEUED → TRIAGE → PENDING APPROVAL → DISPATCHED → IN TRANSIT → ON SCENE → RESOLVED</code>.
-            Incidents with five or more victims, or HIGH/CRITICAL severity, are dispatched only after commander approval.
-          </p>
-        </div>
-        <button className="btn-primary" onClick={onOpenReportModal}>
-          <Plus size={16} /> Report Emergency Incident
-        </button>
-      </div>
-
+      <PageHeader title="Rescue operations"
+        description="Incident lifecycle: reported, verified, queued, triage, pending approval, dispatched, in transit, on scene, resolved. Incidents with five or more victims, or HIGH or CRITICAL severity, are dispatched only after commander approval. Nothing is dispatched automatically."
+        actions={<Button variant="primary" icon={<Plus size={16} />} onClick={onOpenReportModal}>Report emergency incident</Button>} />
+      <DataNotice items={incidents} noun="incidents" />
       {actionNotice && (
         <div className="notice-banner banner-success">
           <span>{actionNotice}</span>
@@ -128,7 +123,8 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="filter-bar">
+      <div className="filter-bar ops-filters">
+        <SearchField value={query} onChange={setQuery} label="Search incidents" placeholder="Search by ID, title, area or squad" />
         <div className="filter-group">
           <span>Status:</span>
           {['ALL', ...statuses].map((st) => (
@@ -188,9 +184,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
                     <div className="text-muted" style={{ fontSize: '11px' }}>📍 {inc.area}</div>
                   </td>
                   <td>
-                    <span className={`pill-alert-${inc.severity.toLowerCase()}`}>
-                      {inc.severity}
-                    </span>
+                    <SeverityBadge severity={inc.severity} />
                   </td>
                   <td>
                     <span className="font-mono font-bold">{inc.people_affected}</span>
@@ -244,51 +238,22 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
         </div>
       </div>
 
-      {/* Modal: Assign Team */}
-      {assignTeamModal && (
-        <div className="modal-backdrop">
-          <div className="modal-box">
-            <div className="modal-header">
-              <h3>Dispatch Rescue Squad to Incident {assignTeamModal.id}</h3>
-              <button className="icon-btn" onClick={() => setAssignTeamModal(null)}>✕</button>
-            </div>
-            <div style={{ padding: '16px' }}>
-              <div style={{ marginBottom: '12px' }}>
-                <strong>Location:</strong> {assignTeamModal.area} ({assignTeamModal.title})<br/>
-                <strong>Trapped Persons:</strong> {assignTeamModal.people_affected}
-              </div>
-
-              <label style={{ display: 'block', marginBottom: '8px' }}>
-                Select Response Team:
-                <select
-                  className="select-input"
-                  style={{ width: '100%', marginTop: '6px' }}
-                  value={selectedTeamId}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
-                >
-                  {availableTeams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.callsign}) — {t.vehicle_type} [{t.status}]
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="modal-actions" style={{ marginTop: '20px' }}>
-                <button className="btn-secondary" onClick={() => setAssignTeamModal(null)}>
-                  Cancel
-                </button>
-                {availableTeams.length === 0 && (
-                  <span className="text-xs text-orange">No team is AVAILABLE right now.</span>
-                )}
-                <button className="btn-primary" onClick={handleAssignTeam} disabled={!selectedTeamId}>
-                  Confirm Dispatch
-                </button>
-              </div>
-            </div>
+      {/* Dispatch confirmation: the server still enforces the approval gate and atomic dispatch (P0). */}
+      <Dialog open={Boolean(assignTeamModal)} title={`Dispatch a squad to ${assignTeamModal?.id ?? ''}`} onClose={() => setAssignTeamModal(null)}
+        footer={<><Button onClick={() => setAssignTeamModal(null)}>Cancel</Button><Button variant="primary" onClick={handleAssignTeam} disabled={!selectedTeamId}>Confirm dispatch</Button></>}>
+        {assignTeamModal && (
+          <div className="ops-dispatch">
+            <p><strong>Location:</strong> {assignTeamModal.area} ({assignTeamModal.title})<br /><strong>People affected:</strong> {assignTeamModal.people_affected}</p>
+            {availableTeams.length === 0
+              ? <p className="auth-notice auth-notice-warn" role="alert">No squad is available right now.</p>
+              : (
+                <SelectField label="Response squad" value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)}>
+                  {availableTeams.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.callsign}) · {t.vehicle_type}</option>)}
+                </SelectField>
+              )}
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   );
 };
