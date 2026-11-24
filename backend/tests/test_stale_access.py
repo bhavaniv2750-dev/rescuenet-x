@@ -10,15 +10,15 @@ from fastapi.testclient import TestClient
 from app.db.session import SessionLocal
 from app.main import app
 from app.models.entities import Incident, User
-from tests.conftest import PORTAL_FOR_ROLE, make_user, sign_in
+from tests.conftest import PORTAL_FOR_ROLE, login_complete, make_user, sign_in
 
 PW = "Str0ng!Passw0rd"
 
 
 def signed_in_user(role="OPERATOR", team_id=None):
-    uid, name = make_user(role, PW, team_id=team_id)
+    uid, name = make_user(role, PW, team_id=team_id, mfa=role not in ("CITIZEN", "VOLUNTEER"))   # S4: staff have MFA
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"portal": PORTAL_FOR_ROLE[role], "username": name, "password": PW})
+    r = login_complete(c, PORTAL_FOR_ROLE[role], name, PW)
     assert r.status_code == 200, r.text
     c.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
     return uid, name, c

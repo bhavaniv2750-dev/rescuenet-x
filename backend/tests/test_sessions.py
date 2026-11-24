@@ -13,15 +13,16 @@ from app.db.session import SessionLocal
 from app.main import app
 from app.models.entities import AuthSession, RefreshToken, User
 from app.services import sessions as svc
-from tests.conftest import PORTAL_FOR_ROLE, make_user
+from tests.conftest import PORTAL_FOR_ROLE, login_complete, make_user
 
 PW = "Str0ng!Passw0rd"
 
 
 def login(role="OPERATOR", remember=False, client=None, uid_name=None):
-    uid, name = uid_name or make_user(role, PW)
+    """Sign in (privileged roles are enrolled in MFA first, since S4 makes it mandatory; the second step is completed)."""
+    uid, name = uid_name or make_user(role, PW, mfa=role not in ("CITIZEN", "VOLUNTEER"))
     c = client or TestClient(app)
-    r = c.post("/api/auth/login", json={"portal": PORTAL_FOR_ROLE[role], "username": name, "password": PW, "remember": remember})
+    r = login_complete(c, PORTAL_FOR_ROLE[role], name, PW, remember)
     assert r.status_code == 200, r.text
     c.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
     return c, r.json(), uid, name
@@ -72,8 +73,9 @@ def test_session_row_holds_minimal_metadata_and_no_secrets():
     s = db_session(sid_of(body["access_token"]))
     assert s.user_id == uid and s.revoked_at is None and s.expires_at > s.created_at
     cols = {col.name for col in AuthSession.__table__.columns}
+    # S4 added the three assurance columns (assurance, mfa_at, mfa_method); still no secret of any kind is stored here
     assert cols == {"id", "user_id", "created_at", "last_used_at", "expires_at", "idle_timeout_s", "remember", "revoked_at",
-                    "revoked_reason", "user_agent", "client_hash"}
+                    "revoked_reason", "user_agent", "client_hash", "assurance", "mfa_at", "mfa_method"}
     assert s.client_hash and "testclient" not in s.client_hash      # keyed hash, not the address
 
 

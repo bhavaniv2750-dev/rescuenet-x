@@ -12,7 +12,7 @@ from app.db.session import SessionLocal
 from app.main import app
 from app.models.entities import AuditLog, AuthSession, NotificationOutbox, OneTimeToken, User
 from app.services import verification as ver
-from tests.conftest import PORTAL_FOR_ROLE, latest_dev_message, make_user, make_user_with_email
+from tests.conftest import PORTAL_FOR_ROLE, latest_dev_message, login_complete, make_user, make_user_with_email
 
 PW = "Str0ng!Passw0rd"
 NEW = "Brand-New!Passw0rd9"
@@ -201,9 +201,9 @@ def test_staff_with_a_recently_changed_address_get_no_reset_link():
 
 
 def test_a_session_thief_cannot_swap_the_staff_email_and_reset_at_once():
-    uid, name, _ = make_user_with_email("OPERATOR", verified=True, changed_hours_ago=72)
+    uid, name, _ = make_user_with_email("OPERATOR", verified=True, changed_hours_ago=72, mfa=True)   # S4: staff have MFA
     c = TestClient(app)
-    tok = c.post("/api/auth/login", json={"portal": "operations", "username": name, "password": PW}).json()["access_token"]
+    tok = login_complete(c, "operations", name, PW).json()["access_token"]
     c.headers["Authorization"] = f"Bearer {tok}"
     c.patch("/api/auth/me/contact", json={"current_password": PW, "email": "thief@example.org"})
     code = re.search(r"code is (\d{6})", (c.post("/api/auth/verify/email/request"), latest_dev_message(uid, "EMAIL_VERIFY"))[1].body).group(1)
@@ -219,10 +219,10 @@ def test_staff_without_any_email_have_no_email_recovery():
 
 
 def test_reset_does_not_change_role_or_grant_anything():
-    uid, name, _ = make_user_with_email("OPERATOR", verified=True, changed_hours_ago=48)
+    uid, name, _ = make_user_with_email("OPERATOR", verified=True, changed_hours_ago=48, mfa=True)
     forgot(name); reset(token_for(uid))
     c = TestClient(app)
-    tok = c.post("/api/auth/login", json={"portal": "operations", "username": name, "password": NEW}).json()
+    tok = login_complete(c, "operations", name, NEW).json()      # S4: the reset kept MFA, so the second step is still required
     h = {"Authorization": f"Bearer {tok['access_token']}"}
     assert tok["user"]["role"] == "OPERATOR"
     assert c.post("/api/agents/tasks/TASK-X/approve", json={}, headers=h).status_code == 403          # still no approval authority

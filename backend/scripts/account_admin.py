@@ -17,6 +17,20 @@ a person with SHELL ACCESS TO THE SERVER, authorised separately from the applica
   out work. Recovery never changes the account's role or permissions.
 * Every use is recorded in the audit log (actor "cli:<operating-system user>", the reason, no secrets).
 * All existing sessions of the account are ended.
+* Password recovery NEVER removes enrolled MFA: the owner still completes their authenticator challenge (or, for a privileged
+  account without MFA, enrols before any operational access).
+
+Lost authenticator (privileged accounts included) is a separate, stricter procedure:
+
+    python scripts/account_admin.py reset-mfa --username jdoe --reason "phone lost" \
+        --identity-verified "checked photo ID in person against HR record, ticket 456" --i-am-authorized
+
+* needs a recorded reason AND a description of how the owner's identity was re-verified (>= 15 characters);
+* takes a verified backup, deletes the TOTP credential and recovery codes, ends every session, audits (`ACCOUNT_CLI_MFA_RESET`);
+* the password is NOT changed, and the account must RE-ENROL MFA at its next sign-in before any operational access;
+* a password recovery and an MFA reset of the same privileged account must be at least RECOVERY_COMBINATION_HOURS (24) apart,
+  so one operator cannot take over a commander in a single sitting. A second authorised operator may override with
+  `--second-authorizer NAME` (recorded). This is policy plus audit, not cryptographic proof: see docs/security/S4_MFA.md.
 """
 import argparse
 import getpass
@@ -27,15 +41,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings  # noqa: E402
-from app.core.permissions import ROLES  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.core.permissions import PRIVILEGED_ROLES, ROLES  # noqa: E402
 from app.core.security import ROLE_PORTAL, hash_password, password_problem  # noqa: E402
 from app.db import backup as backup_mod  # noqa: E402
 from app.db.migrations import ensure_schema  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.entities import RescueTeam, User  # noqa: E402
+from app.models.entities import AuditLog, AuthChallenge, RescueTeam, User  # noqa: E402
+from app.services import mfa as mfa_svc  # noqa: E402
 from app.services import rate_limit  # noqa: E402
 from app.services import sessions as sess  # noqa: E402
 from app.services.audit import record_audit  # noqa: E402
+
+
+PASSWORD_RECOVERY_ACTIONS = ("ACCOUNT_CLI_PASSWORD_RESET", "PASSWORD_RESET_COMPLETED", "USER_PASSWORD_RESET_BY_ADMIN")
 
 
 def one_time_password() -> str:
@@ -43,6 +63,45 @@ def one_time_password() -> str:
         pw = secrets.token_urlsafe(14)
         if password_problem(pw) is None:
             return pw
+
+
+def recent_recovery(db, user, actions) -> bool:
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=settings.RECOVERY_COMBINATION_HOURS)
+    return db.query(AuditLog).filter(AuditLog.target_type == "user", AuditLog.target_id == str(user.id),
+                                     AuditLog.action.in_(actions), AuditLog.created_at > cutoff).first() is not None
+
+
+def override_ok(args, actor) -> bool:
+    second = (getattr(args, "second_authorizer", None) or "").strip()
+    return len(second) >= 3 and second.lower() != actor.split(":", 1)[-1].lower()
+
+
+def reset_mfa(db, user, username, actor, args) -> int:
+    if len(args.identity_verified.strip()) < 15:
+        print("Refused: --identity-verified must describe how the owner's identity was re-verified (15+ characters).", file=sys.stderr)
+        return 2
+    if user is None:
+        print(f"Refused: no account named '{username}'.", file=sys.stderr)
+        return 1
+    if user.role in PRIVILEGED_ROLES and recent_recovery(db, user, PASSWORD_RECOVERY_ACTIONS) and not override_ok(args, actor):
+        print(f"Refused: a password recovery of this privileged account happened in the last {settings.RECOVERY_COMBINATION_HOURS} hours. "
+              "Doing the MFA reset too would let one sitting take the account over; wait, or have a second authorised operator pass "
+              "--second-authorizer NAME.", file=sys.stderr)
+        return 3
+    had = mfa_svc.get_credential(db, user.id) is not None
+    mfa_svc.remove_credential(db, user.id)
+    db.query(AuthChallenge).filter(AuthChallenge.user_id == user.id).delete()
+    note = f"{username}; reason: {args.reason}; identity re-verified: {args.identity_verified}"
+    if getattr(args, "second_authorizer", None):
+        note += f"; second authorizer: {args.second_authorizer}"
+    record_audit(db, actor, "ACCOUNT_CLI_MFA_RESET", "user", user.id, note[:480], role="HOST_OPERATOR")
+    sess.revoke_all_sessions(db, user, "CLI_MFA_RESET", actor=actor, role="HOST_OPERATOR")
+    db.commit()
+    rate_limit.clear("mfa-fail", str(user.id))
+    print(f"MFA reset for '{username}' ({user.role}); {'a credential was removed' if had else 'there was no credential'}. "
+          "All sessions ended. The password is unchanged.")
+    print("The owner must enrol MFA again at their next sign-in; until then the account can do nothing operational.")
+    return 0
 
 
 def main() -> int:
@@ -55,7 +114,12 @@ def main() -> int:
     c.add_argument("--team-id")
     r = sub.add_parser("reset-password")
     r.add_argument("--username", required=True)
-    for p in (c, r):
+    m = sub.add_parser("reset-mfa")
+    m.add_argument("--username", required=True)
+    m.add_argument("--identity-verified", required=True, help="how the owner's identity was re-verified (recorded)")
+    for p in (r, m):
+        p.add_argument("--second-authorizer", help="name of a second authorised operator, to override the 24 h combination rule")
+    for p in (c, r, m):
         p.add_argument("--reason", required=True, help="why this is needed (recorded in the audit log)")
         p.add_argument("--i-am-authorized", action="store_true", help="confirm you are authorised to do this on this server")
     args = ap.parse_args()
@@ -76,6 +140,14 @@ def main() -> int:
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == username).first()
+        if args.cmd == "reset-mfa":
+            return reset_mfa(db, user, username, actor, args)
+        if args.cmd == "reset-password" and user is not None and user.role in PRIVILEGED_ROLES and recent_recovery(db, user, ("ACCOUNT_CLI_MFA_RESET",)):
+            if not override_ok(args, actor):
+                print(f"Refused: this privileged account's MFA was reset in the last {settings.RECOVERY_COMBINATION_HOURS} hours. "
+                      "Resetting the password too would combine both recoveries; wait, or have a second authorised operator pass "
+                      "--second-authorizer NAME.", file=sys.stderr)
+                return 3
         password = one_time_password()
         if args.cmd == "create":
             if user is not None:

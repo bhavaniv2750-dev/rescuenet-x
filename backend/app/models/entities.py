@@ -284,6 +284,11 @@ class AuthSession(Base):
     user_id = Column(Integer, nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, default=utc_now)
     last_used_at = Column(DateTime, nullable=False, default=utc_now)
+    # Authentication assurance: PASSWORD (password only) or MFA (a second factor was completed in THIS session). A refresh
+    # keeps the session, so it can never upgrade assurance. mfa_at is the last time a second factor was proven (freshness).
+    assurance = Column(String(10), nullable=False, default="PASSWORD", server_default="PASSWORD")
+    mfa_at = Column(DateTime, nullable=True)
+    mfa_method = Column(String(10), nullable=True)   # TOTP | RECOVERY
     expires_at = Column(DateTime, nullable=False)          # absolute limit
     idle_timeout_s = Column(Integer, nullable=False)       # no refresh within this many seconds ends the session
     remember = Column(Boolean, nullable=False, default=False)
@@ -353,3 +358,45 @@ class RateLimitEvent(Base):
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
     __table_args__ = (Index("ix_rate_limit_lookup", "bucket", "key_hash", "created_at"),)
+
+
+class MfaCredential(Base):
+    """A user's TOTP credential. The shared secret is stored only as authenticated ciphertext (AES-256-GCM, key from the
+    environment, bound to the user id). PENDING until the user proves possession with a correct code (confirmation)."""
+    __tablename__ = "mfa_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, unique=True, index=True)
+    secret_enc = Column(Text, nullable=False)
+    status = Column(String(10), nullable=False, default="PENDING")   # PENDING | ACTIVE
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    confirmed_at = Column(DateTime, nullable=True)
+    last_used_step = Column(Integer, nullable=True)                  # newest accepted 30 s step: replay prevention
+
+
+class MfaRecoveryCode(Base):
+    """One single-use backup code. Only an HMAC of the code is stored."""
+    __tablename__ = "mfa_recovery_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    used_at = Column(DateTime, nullable=True)
+
+
+class AuthChallenge(Base):
+    """Short-lived, purpose-restricted proof that the PASSWORD step succeeded and a second factor is still owed. It is not a
+    session and not an access token: it works only at /auth/mfa/verify, once, within minutes, with a few attempts."""
+    __tablename__ = "auth_challenges"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    purpose = Column(String(20), nullable=False)        # MFA_LOGIN
+    user_id = Column(Integer, nullable=False, index=True)
+    remember = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)

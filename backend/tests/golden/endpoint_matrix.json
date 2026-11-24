@@ -109,6 +109,16 @@
     "VOLUNTEER": "allow",
     "anonymous": "401"
   },
+  "GET /api/auth/mfa/status": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
   "GET /api/auth/portals": {
     "ADMIN": "allow",
     "CITIZEN": "allow",
@@ -588,6 +598,66 @@
     "RESCUE_OFFICER": "allow",
     "VOLUNTEER": "allow",
     "anonymous": "401"
+  },
+  "POST /api/auth/mfa/disable": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/mfa/enroll/confirm": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/mfa/enroll/start": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/mfa/reauth": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/mfa/recovery-codes/regenerate": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "401"
+  },
+  "POST /api/auth/mfa/verify": {
+    "ADMIN": "allow",
+    "CITIZEN": "allow",
+    "COMMANDER": "allow",
+    "DEVELOPER": "allow",
+    "OPERATOR": "allow",
+    "RESCUE_OFFICER": "allow",
+    "VOLUNTEER": "allow",
+    "anonymous": "allow"
   },
   "POST /api/auth/password/forgot": {
     "ADMIN": "allow",

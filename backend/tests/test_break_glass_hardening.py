@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.db.session import SessionLocal
 from app.main import app
 from app.models.entities import AuditLog, User
-from tests.conftest import PORTAL_FOR_ROLE, make_team, make_user, sign_in
+from tests.conftest import PORTAL_FOR_ROLE, enroll_via_api, make_team, make_user, sign_in
 
 BACKEND = Path(__file__).resolve().parent.parent
 PW = "Str0ng!Passw0rd"
@@ -89,6 +89,9 @@ def test_changing_the_password_completes_recovery_and_restores_exactly_the_roles
     h = {"Authorization": f"Bearer {r.json()['access_token']}"}
     me = c.get("/api/auth/me", headers=h).json()
     assert me["password_change_required"] is False and me["role"] == "OPERATOR"
+    # S4: an operator without MFA must ENROL before any operational access, even after the forced change
+    assert me["auth_state"] == "MFA_ENROLLMENT_PENDING" and c.get("/api/teams/", headers=h).status_code == 403
+    enroll_via_api(c, NEW, headers=h)
     assert c.get("/api/teams/", headers=h).status_code == 200                                   # operator powers are back...
     assert c.post("/api/agents/tasks/TASK-X/approve", json={}, headers=h).status_code == 403   # ...and no more than that
     assert c.get("/api/auth/users", headers=h).status_code == 403

@@ -260,3 +260,80 @@ def test_0004_up_down_up_keeps_users_and_the_sessions_tables(engine):
         assert c.execute(text("SELECT COUNT(*) FROM users WHERE username='keep'")).scalar() == 1
     migrations.upgrade(engine)
     assert migrations.schema_drift(engine) == []
+
+
+# ---------------------------------------------------------------- S4: revision 0005 (MFA)
+
+def _seed_pre_mfa(engine):
+    """A database as S3 left it: privileged and public accounts, a live session, an unverified email."""
+    migrations.upgrade(engine, "0004")
+    with engine.begin() as c:
+        for i, (name, role) in enumerate([("cmdr", "COMMANDER"), ("oper", "OPERATOR"), ("adm", "ADMIN"), ("offc", "RESCUE_OFFICER"), ("cit", "CITIZEN")], start=1):
+            c.execute(text("INSERT INTO users (id, username, full_name, role, email, password_hash, is_active, failed_logins, token_version, "
+                           "must_change_password, created_at) VALUES (:i,:n,:n,:r,:e,'hash-not-real',1,0,0,0,'2025-01-01')"),
+                      {"i": i, "n": name, "r": role, "e": f"{name}@example.org"})
+        c.execute(text("INSERT INTO auth_sessions (id, user_id, created_at, last_used_at, expires_at, idle_timeout_s, remember) "
+                       "VALUES ('s1', 1, '2026-01-01', '2026-01-01', '2999-01-01', 3600, 0)"))
+
+
+def test_0005_keeps_every_existing_account_and_marks_nobody_as_enrolled(engine):
+    _seed_pre_mfa(engine)
+    migrations.upgrade(engine)
+    insp = inspect(engine)
+    assert {"mfa_credentials", "mfa_recovery_codes", "auth_challenges"} <= set(insp.get_table_names())
+    assert {"assurance", "mfa_at", "mfa_method"} <= {c["name"] for c in insp.get_columns("auth_sessions")}
+    with engine.connect() as c:
+        rows = c.execute(text("SELECT username, role, password_hash, is_active FROM users ORDER BY id")).all()
+        assert [tuple(r) for r in rows] == [("cmdr", "COMMANDER", "hash-not-real", 1), ("oper", "OPERATOR", "hash-not-real", 1),
+                                             ("adm", "ADMIN", "hash-not-real", 1), ("offc", "RESCUE_OFFICER", "hash-not-real", 1),
+                                             ("cit", "CITIZEN", "hash-not-real", 1)]
+        for t in ("mfa_credentials", "mfa_recovery_codes", "auth_challenges"):
+            assert c.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar() == 0                  # nobody was silently marked MFA-verified
+        assert c.execute(text("SELECT assurance, mfa_at FROM auth_sessions WHERE id='s1'")).one() == ("PASSWORD", None)
+    assert migrations.schema_drift(engine) == []
+
+
+def test_existing_privileged_accounts_are_restricted_until_they_enrol_after_the_migration(engine):
+    from sqlalchemy.orm import Session as OrmSession
+    from app.models.entities import AuthSession, User
+    from app.services import auth_state as astate
+    _seed_pre_mfa(engine)
+    migrations.upgrade(engine)
+    with OrmSession(engine) as db:
+        s = db.get(AuthSession, "s1")
+        for username, expected in [("cmdr", astate.MFA_ENROLLMENT_PENDING), ("oper", astate.MFA_ENROLLMENT_PENDING),
+                                   ("adm", astate.MFA_ENROLLMENT_PENDING), ("offc", astate.MFA_ENROLLMENT_PENDING), ("cit", astate.AUTHENTICATED)]:
+            u = db.query(User).filter(User.username == username).one()
+            assert astate.session_state(u, s, False) == expected, username
+            assert astate.path_allowed(astate.session_state(u, s, False), "/api/teams/") == (expected == astate.AUTHENTICATED)
+
+
+def test_0005_up_down_up_preserves_users_and_sessions(engine):
+    _seed_pre_mfa(engine)
+    migrations.upgrade(engine)
+    migrations.downgrade(engine, "0004")
+    insp = inspect(engine)
+    assert "mfa_credentials" not in insp.get_table_names() and "assurance" not in {c["name"] for c in insp.get_columns("auth_sessions")}
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM users")).scalar() == 5 and c.execute(text("SELECT COUNT(*) FROM auth_sessions")).scalar() == 1
+    migrations.upgrade(engine)
+    assert migrations.schema_drift(engine) == []
+
+
+def test_0005_is_backed_up_first_and_the_backup_restores_the_pre_migration_state(engine, tmp_path):
+    import sqlite3
+    from app.db import backup as backup_mod
+    _seed_pre_mfa(engine)
+    db_file = backup_mod.sqlite_path_from_url(str(engine.url))
+    migrations.ensure_schema(engine)                                       # managed DB one revision behind: backs up, then upgrades
+    backups = sorted(settings.BACKUP_DIR.glob("*pre-migration*.db.bak"))
+    assert len(backups) == 1
+    manifest = backup_mod.verify_backup(backups[0])                        # checksum, integrity and row counts match
+    assert manifest["table_row_counts"]["users"] == 5 and "mfa_credentials" not in manifest["table_row_counts"]
+    engine.dispose()
+    backup_mod.restore_backup(backups[0], db_file, settings.BACKUP_DIR)
+    raw = sqlite3.connect(db_file)
+    tables = {r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "mfa_credentials" not in tables and raw.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 5
+    assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004"
+    raw.close()

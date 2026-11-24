@@ -88,6 +88,27 @@ class Settings(BaseSettings):
     FORGOT_PER_IDENTIFIER_HOUR: int = int(os.getenv("FORGOT_PER_IDENTIFIER_HOUR", "3"))
     RESET_PER_IP_HOUR: int = int(os.getenv("RESET_PER_IP_HOUR", "10"))
 
+    # ---- Multi-factor authentication (S4)
+    # Authenticated-encryption keys for TOTP secrets at rest. "kid:base64url-32-bytes[,kid2:...]": the FIRST key encrypts, all
+    # listed keys can decrypt (rotation). A single MFA_ENCRYPTION_KEY=<base64url-32-bytes> is also accepted. REQUIRED in
+    # production (start-up refuses otherwise); never stored in the database. Generate: python scripts/mfa_keys.py generate
+    MFA_ENCRYPTION_KEYS: str = os.getenv("MFA_ENCRYPTION_KEYS", "") or os.getenv("MFA_ENCRYPTION_KEY", "")
+    MFA_ISSUER: str = os.getenv("MFA_ISSUER", "RescueNet X")
+    MFA_DRIFT_STEPS: int = int(os.getenv("MFA_DRIFT_STEPS", "1"))                      # accept +/- this many 30 s steps (max 1)
+    MFA_CHALLENGE_SECONDS: int = int(os.getenv("MFA_CHALLENGE_SECONDS", "300"))        # password -> code window
+    MFA_CHALLENGE_MAX_ATTEMPTS: int = int(os.getenv("MFA_CHALLENGE_MAX_ATTEMPTS", "5"))
+    MFA_FRESH_MINUTES: int = int(os.getenv("MFA_FRESH_MINUTES", "10"))                 # "recent MFA" for sensitive actions
+    MFA_APPROVAL_FRESH_MINUTES: int = int(os.getenv("MFA_APPROVAL_FRESH_MINUTES", "5")) # commander approval, critical alerts
+    MFA_RECOVERY_CODE_COUNT: int = int(os.getenv("MFA_RECOVERY_CODE_COUNT", "10"))
+    MFA_FAILS_PER_ACCOUNT_15MIN: int = int(os.getenv("MFA_FAILS_PER_ACCOUNT_15MIN", "8"))
+    MFA_ATTEMPTS_PER_IP_15MIN: int = int(os.getenv("MFA_ATTEMPTS_PER_IP_15MIN", "40"))
+    MFA_RECOVERY_FAILS_PER_ACCOUNT_HOUR: int = int(os.getenv("MFA_RECOVERY_FAILS_PER_ACCOUNT_HOUR", "5"))
+    MFA_ENROLL_START_PER_ACCOUNT_HOUR: int = int(os.getenv("MFA_ENROLL_START_PER_ACCOUNT_HOUR", "6"))
+    # Optional policy: privileged accounts must also have a verified email before operational access (state machine step).
+    PRIVILEGED_REQUIRE_VERIFIED_EMAIL: bool = os.getenv("PRIVILEGED_REQUIRE_VERIFIED_EMAIL", "false").lower() in ("1", "true", "yes")
+    # Host-level recovery: a password reset and an MFA reset of the same privileged account must be this far apart
+    RECOVERY_COMBINATION_HOURS: int = int(os.getenv("RECOVERY_COMBINATION_HOURS", "24"))
+
     # Ollama Supervisor Settings
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")

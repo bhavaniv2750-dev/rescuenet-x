@@ -11,6 +11,7 @@ from app.api.routes.flood import router as flood_router
 from app.api.routes.health import router as health_router
 from app.api.routes.incidents import router as incidents_router
 from app.api.routes.media import router as media_router
+from app.api.routes.mfa import router as mfa_router
 from app.api.routes.public import router as public_router
 from app.api.routes.records import router as records_router
 from app.api.routes.teams import router as teams_router
@@ -28,6 +29,7 @@ api_router.include_router(dashboard_router, tags=["Dashboard"], dependencies=[De
 api_router.include_router(flood_router, prefix="/flood", tags=["Flood"])
 api_router.include_router(incidents_router, prefix="/incidents", tags=["Incidents"])
 api_router.include_router(dev_router, prefix="/dev", tags=["Development only"])
+api_router.include_router(mfa_router, prefix="/auth/mfa", tags=["MFA"])
 api_router.include_router(media_router, prefix="/media", tags=["Evidence"])
 api_router.include_router(public_router, prefix="/public", tags=["Public"])
 api_router.include_router(alerts_router, prefix="/alerts", tags=["Alerts"])

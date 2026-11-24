@@ -65,14 +65,17 @@ def _enforce_session_cap(db: Session, user_id: int) -> None:
         old.revoked_at, old.revoked_reason = now(), "SESSION_LIMIT"
 
 
-def create_session(db: Session, user: User, request: Optional[Request], remember: bool = False) -> Tuple[AuthSession, str]:
-    """Start a session. Returns (session, refresh_token). The caller commits."""
+def create_session(db: Session, user: User, request: Optional[Request], remember: bool = False, assurance: str = "PASSWORD",
+                   mfa_method: Optional[str] = None, mfa_at: Optional[datetime] = None) -> Tuple[AuthSession, str]:
+    """Start a session. Returns (session, refresh_token). The caller commits. `assurance` is MFA only when a second factor was
+    just completed for this session (or carried over from a session that had completed one moments ago)."""
     absolute, idle_s = _limits(user, remember)
     _enforce_session_cap(db, user.id)
     t = now()
     session = AuthSession(
         id=secrets.token_hex(16), user_id=user.id, created_at=t, last_used_at=t, expires_at=t + absolute,
         idle_timeout_s=idle_s, remember=bool(remember and user.role in PUBLIC_ROLES),
+        assurance=assurance, mfa_method=mfa_method, mfa_at=mfa_at if assurance == "MFA" else None,
         user_agent=((request.headers.get("user-agent") or "")[:200] or None) if request else None,
         client_hash=client_fingerprint(request) if request else None)
     db.add(session)

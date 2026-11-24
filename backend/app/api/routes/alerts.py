@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import actor_name, actor_role, ensure_permission, get_current_user, require_permission
+from app.api.deps import actor_name, actor_role, ensure_permission, ensure_recent_mfa, get_current_user, require_permission
+from app.core.config import settings
 from app.core.permissions import P, has_permission
 from app.db.session import get_db
 from app.models.entities import Alert, User
@@ -34,6 +35,8 @@ def list_alerts(status_filter: Optional[str] = None, db: Session = Depends(get_d
 @router.post("/", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
 def create_alert(payload: AlertCreate, db: Session = Depends(get_db), user: User = Depends(require_permission(P.ALERT_PUBLISH))):
     ensure_permission(user, P.ALERT_PUBLISH)  # service-level: publishing is never implied by another permission
+    if payload.severity.upper() == "CRITICAL":
+        ensure_recent_mfa(user, settings.MFA_APPROVAL_FRESH_MINUTES)   # critical alerts need a recent second factor
     duplicate = find_duplicate(db, payload.title, payload.severity, payload.latitude, payload.longitude)
     if duplicate is not None:
         record_audit(db, actor_name(user), "ALERT_DUPLICATE_BLOCKED", "alert", duplicate.id, payload.title, role=actor_role(user))

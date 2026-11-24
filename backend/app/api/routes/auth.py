@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.deps import actor_name, get_current_user, require_permission, utcnow_naive
+from app.api.deps import actor_name, ensure_recent_mfa, get_current_user, require_permission, utcnow_naive
 from app.core.permissions import P, PRIVILEGED_ROLES, PUBLIC_ROLES, permissions_for_role
 from app.core.security import (
     PORTALS,
@@ -28,6 +28,8 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.entities import AuditLog, AuthSession, RefreshToken, RescueTeam, User, Volunteer
+from app.services import auth_state as astate
+from app.services import mfa as mfa_svc
 from app.services import notifications as notif
 from app.services import rate_limit
 from app.services import sessions as sess
@@ -78,10 +80,14 @@ class UserOut(BaseModel):
     email_verified: bool = False
     phone_verified: bool = False
     password_change_required: bool = False   # only the password-change endpoints work until this is cleared
+    mfa_required: bool = False               # mandatory for every non-public role
+    mfa_enabled: bool = False
+    auth_state: str = ""                      # see app/services/auth_state.py; only AUTHENTICATED reaches operational pages
     model_config = ConfigDict(from_attributes=True)
 
 
 class TokenOut(BaseModel):
+    status: str = "authenticated"
     """The refresh token is never in the body: it travels only in an HttpOnly cookie."""
     access_token: str
     token_type: str = "bearer"
@@ -125,10 +131,19 @@ class AuditEntryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-def user_out(db: Session, user: User) -> UserOut:
+def user_out(db: Session, user: User, session: Optional[AuthSession] = None) -> UserOut:
     out = UserOut.model_validate(user)
     out.portal = ROLE_PORTAL.get(user.role, "")
-    out.permissions = [] if user.must_change_password else sorted(permissions_for_role(user.role))
+    enabled = mfa_svc.is_enabled(db, user.id)
+    out.mfa_enabled = enabled
+    out.mfa_required = user.role in PRIVILEGED_ROLES
+    # An explicit session means "state as of NOW for that session" (e.g. just after enrolment); otherwise use what the request
+    # dependency computed; listing other users has neither and shows no state.
+    state = astate.session_state(user, session, enabled) if session is not None else getattr(user, "auth_state", None)
+    out.auth_state = state or ""
+    # Permissions are advertised only to a fully authenticated session (the API enforces this anyway). Listing OTHER users
+    # (administration) has no session and shows the role's permissions.
+    out.permissions = sorted(permissions_for_role(user.role)) if state in (None, astate.AUTHENTICATED) else []
     out.email_verified = user.email_verified_at is not None
     out.phone_verified = user.phone_verified_at is not None
     out.password_change_required = bool(user.must_change_password)
@@ -138,13 +153,16 @@ def user_out(db: Session, user: User) -> UserOut:
     return out
 
 
-def start_session(db: Session, user: User, request: Request, response: Response, remember: bool = False) -> TokenOut:
-    """Create a session, set the refresh/CSRF cookies and return the short-lived access token. Caller commits first."""
-    session, refresh = sess.create_session(db, user, request, remember)
+def start_session(db: Session, user: User, request: Request, response: Response, remember: bool = False,
+                  assurance: str = "PASSWORD", mfa_method: Optional[str] = None, mfa_at=None) -> TokenOut:
+    """Create a session, set the refresh/CSRF cookies and return the short-lived access token. Caller commits first.
+    A session starts with assurance MFA only when a second factor was just completed; otherwise PASSWORD, and a privileged
+    account in that state can do nothing but enrol MFA (see auth_state)."""
+    session, refresh = sess.create_session(db, user, request, remember, assurance, mfa_method, mfa_at)
     db.commit()
     sess.set_session_cookies(response, session, refresh)
     return TokenOut(access_token=sess.access_token_for(session, user), expires_in=int(settings.access_token_minutes * 60),
-                    csrf_token=sess.csrf_value(session.id), user=user_out(db, user))
+                    csrf_token=sess.csrf_value(session.id), user=user_out(db, user, session))
 
 
 def _check_password(pw: str) -> None:
@@ -192,7 +210,7 @@ def _find_login_user(db: Session, ident: str) -> Optional[User]:
     return matches[0] if len(matches) == 1 else None
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post("/login", response_model=None)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     ident = payload.username.strip().lower()
     ip, account_key = rate_limit.client_fingerprint(request), rate_limit.identifier_key(ident)
@@ -220,6 +238,16 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise HTTPException(status_code=403, detail=f"This account signs in through the '{portal}' portal.")
     user.failed_logins = 0
     user.locked_until = None
+    if mfa_svc.is_enabled(db, user.id):
+        # The password alone never yields a session for an account with MFA: only a short-lived, single-purpose challenge.
+        challenge = mfa_svc.issue_challenge(db, user, payload.remember)
+        mfa_svc.purge_old_challenges(db)
+        record_audit(db, user.username, "LOGIN_PASSWORD_OK_MFA_PENDING", "user", user.id, f"portal {payload.portal}", role=user.role)
+        db.commit()
+        r = JSONResponse(content={"status": "mfa_required", "challenge_token": challenge,
+                                  "expires_in": settings.MFA_CHALLENGE_SECONDS, "methods": ["totp", "recovery_code"]})
+        r.headers["Cache-Control"] = "no-store"
+        return r
     user.last_login_at = now
     record_audit(db, user.username, "LOGIN", "user", user.id, f"portal {payload.portal}", role=user.role)
     return start_session(db, user, request, response, payload.remember)
@@ -283,7 +311,7 @@ def refresh(request: Request, db: Session = Depends(get_db)):
         return _unauthorized(exc.detail)
     db.commit()
     body = TokenOut(access_token=sess.access_token_for(session, user), expires_in=int(settings.access_token_minutes * 60),
-                    csrf_token=sess.csrf_value(session.id), user=user_out(db, user))
+                    csrf_token=sess.csrf_value(session.id), user=user_out(db, user, session))
     response = JSONResponse(content=body.model_dump(mode="json"))
     response.headers["Cache-Control"] = "no-store"
     sess.set_session_cookies(response, session, new_token)
@@ -365,17 +393,21 @@ def change_password(payload: PasswordChange, request: Request, response: Respons
                     db: Session = Depends(get_db)):
     """Change your own password. Every session, including this one, ends; a fresh session is started for this device.
     This is also how a forced change after break-glass recovery is completed: the temporary password cannot be reused."""
+    ensure_recent_mfa(user)          # sensitive: with MFA enabled, a second factor must have been shown recently
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is wrong")
     _check_password(payload.new_password)
     if verify_password(payload.new_password, user.password_hash):
         raise HTTPException(status_code=422, detail="Choose a new password that is different from the current one.")
+    old = getattr(user, "_session", None)
+    carry = (old.assurance, old.mfa_method, old.mfa_at) if old is not None and old.assurance == "MFA" else ("PASSWORD", None, None)
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = utcnow_naive()
     user.must_change_password = False
     record_audit(db, user.username, "PASSWORD_CHANGED", "user", user.id, role=user.role)
     ended = sess.revoke_all_sessions(db, user, "PASSWORD_CHANGED", actor=user.username, role=user.role)
-    out = start_session(db, user, request, response)
+    # The fresh session for this device keeps the MFA assurance the user JUST proved (required above); it is never raised.
+    out = start_session(db, user, request, response, False, *carry)
     return {"message": "Password changed. All other sessions were signed out.", "sessions_ended": ended,
             **out.model_dump(mode="json")}
 
@@ -494,6 +526,7 @@ def confirm_phone(payload: CodeIn, user: User = Depends(get_current_user), db: S
 def change_contact(payload: ContactChange, background: BackgroundTasks, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Change your email or phone. Needs your current password. A changed address is UNVERIFIED until a new code is entered;
     codes issued for the old address stop working, and a verified old address is told about the change."""
+    ensure_recent_mfa(user)
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is wrong")
     changed: List[str] = []
@@ -641,6 +674,7 @@ def _deny_admin_action(db: Session, admin: User, action: str, detail: str, messa
 def create_user(payload: UserCreate, admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
     """Administrators may create citizen and volunteer accounts only. Creating a privileged account with a password the
     administrator chose would hand them that account's authority, so it is disabled until owner-controlled invitations (S5)."""
+    ensure_recent_mfa(admin)         # privileged account management: a second factor must be recent
     if payload.role in PRIVILEGED_ROLES:
         _deny_admin_action(db, admin, "ADMIN_PRIVILEGED_ACCOUNT_CREATE_DENIED", payload.username, STAFF_ACCOUNT_NOTICE)
     _check_password(payload.password)
@@ -660,6 +694,7 @@ def create_user(payload: UserCreate, admin: User = Depends(require_permission(P.
 
 @router.patch("/users/{user_id}", response_model=UserOut)
 def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
+    ensure_recent_mfa(admin)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -711,6 +746,7 @@ def update_user(user_id: int, payload: UserUpdate, admin: User = Depends(require
 @router.post("/users/{user_id}/revoke-sessions")
 def admin_revoke_sessions(user_id: int, admin: User = Depends(require_permission(P.USER_MANAGE)), db: Session = Depends(get_db)):
     """Incident response: sign an account out everywhere (for example after a suspected theft)."""
+    ensure_recent_mfa(admin)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

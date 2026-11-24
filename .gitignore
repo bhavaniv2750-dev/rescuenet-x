@@ -85,4 +85,5 @@ backend/backups/
 
 # Local secrets created at first start
 backend/.jwt_secret
+backend/.mfa_key
 backend/.admin_password

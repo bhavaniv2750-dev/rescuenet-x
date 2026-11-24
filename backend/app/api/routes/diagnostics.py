@@ -10,11 +10,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
-from app.core.permissions import P
+from app.core.permissions import P, PRIVILEGED_ROLES
 from app.core.config import settings
 from app.core.security import verify_password
 from app.db.session import get_db
-from app.models.entities import Alert, AuditLog, Beacon, Facility, Incident, RescueTeam, SupervisorTask, User, Volunteer
+from app.models.entities import Alert, AuditLog, Beacon, Facility, Incident, MfaCredential, RescueTeam, SupervisorTask, User, Volunteer
 
 router = APIRouter()
 
@@ -93,6 +93,12 @@ def diagnostics(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "jwt_secret_from_env": bool(settings.JWT_SECRET),
             "lora_gateway_key_set": bool(settings.LORA_GATEWAY_KEY),
             "cors_origins": settings.CORS_ORIGINS,
+            # Counts and booleans only. Never a secret, a key, a code or a user name.
+            "mfa": {"mfa_key_configured": bool(settings.MFA_ENCRYPTION_KEYS),
+                    "enrolled_accounts": db.query(MfaCredential).filter(MfaCredential.status == "ACTIVE").count(),
+                    "pending_enrolments": db.query(MfaCredential).filter(MfaCredential.status == "PENDING").count(),
+                    "privileged_accounts_without_mfa": db.query(User).filter(User.role.in_(list(PRIVILEGED_ROLES)), User.is_active.is_(True))
+                    .filter(~User.id.in_(db.query(MfaCredential.user_id).filter(MfaCredential.status == "ACTIVE"))).count()},
         },
         "storage": {"uploads_mb": _dir_size_mb(settings.UPLOAD_DIR), "flood_images_dir_exists": settings.FLOOD_IMG_DIR.exists()},
         "warnings": warnings,

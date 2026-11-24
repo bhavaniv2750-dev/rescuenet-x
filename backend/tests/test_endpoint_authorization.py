@@ -109,6 +109,13 @@ MUST_ALLOW = {
     ("GET", "/api/health"): PUBLIC, ("GET", "/"): PUBLIC,
     ("GET", "/api/datasets/images/file/{filename}"): PUBLIC,
     ("POST", "/api/auth/login"): PUBLIC,
+    ("POST", "/api/auth/mfa/verify"): PUBLIC,           # needs a valid single-use challenge from a successful password step
+    ("GET", "/api/auth/mfa/status"): SIGNED_IN,
+    ("POST", "/api/auth/mfa/enroll/start"): SIGNED_IN,
+    ("POST", "/api/auth/mfa/enroll/confirm"): SIGNED_IN,
+    ("POST", "/api/auth/mfa/reauth"): SIGNED_IN,
+    ("POST", "/api/auth/mfa/disable"): SIGNED_IN,
+    ("POST", "/api/auth/mfa/recovery-codes/regenerate"): SIGNED_IN,
     ("GET", "/api/auth/capabilities"): PUBLIC,
     ("POST", "/api/auth/password/forgot"): PUBLIC,      # always the same generic answer
     ("POST", "/api/auth/password/reset"): PUBLIC,       # needs a valid single-use token

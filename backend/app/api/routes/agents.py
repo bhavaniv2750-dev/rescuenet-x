@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.deps import actor_name, actor_role, require_permission
+from app.api.deps import actor_name, actor_role, ensure_recent_mfa, require_permission
 from app.core.permissions import P
 from app.db.session import get_db
 from app.models.entities import Facility, Incident, RescueTeam, SupervisorTask, User
@@ -219,7 +219,9 @@ def _get_pending_task(db: Session, task_id: str) -> SupervisorTask:
 def approve_supervisor_task(task_id: str, payload: SupervisorTaskDecision = SupervisorTaskDecision(), db: Session = Depends(get_db),
                             user: User = Depends(require_permission(P.DISPATCH_APPROVE))):
     """Commander approves the plan. The linked incident is dispatched only if the suggested team can really be
-    sent: it must still be AVAILABLE and is claimed atomically. Otherwise nothing changes and the approval is refused."""
+    sent: it must still be AVAILABLE and is claimed atomically. Otherwise nothing changes and the approval is refused.
+    A high-risk dispatch decision also needs a recent second factor (S4); all P0 approval and dispatch rules are unchanged."""
+    ensure_recent_mfa(user, settings.MFA_APPROVAL_FRESH_MINUTES)
     payload = _decider(payload, user)
     task = _get_pending_task(db, task_id)
 

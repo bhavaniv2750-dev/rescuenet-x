@@ -5,6 +5,11 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.db.init_db import init_db
 from app.db.migrations import MigrationError
+from app.services import mfa_crypto
+
+# Refuse to run with a missing/invalid MFA encryption configuration in production (and an invalid one anywhere).
+mfa_crypto.validate_configuration()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
