@@ -1,0 +1,13 @@
+markers/clusters/rings/labels/search per preset (same data): {"classic":{"markers":23,"clusters":4,"rings":0,"labels":0,"search":0},"tactical":{"markers":36,"clusters":4,"rings":4,"labels":1,"search":0},"navigation":{"markers":36,"clusters":4,"rings":0,"labels":0,"search":1},"flood":{"markers":36,"clusters":4,"rings":4,"labels":1,"search":1}}
+tactical: marker click shows nothing
+navigation: marker click shows information card
+flood: marker click shows information card
+classic at 390 px overflow 0
+tactical at 390 px overflow 0
+navigation at 390 px overflow 0
+flood at 390 px overflow 0
+style switch time (ms, includes 50 ms settle): {"classic":97,"tactical":96,"navigation":100,"flood":101}
+place search in this environment: Place search is unavailable (the geocoding service could not be reached). |  | Search sends your text to OpenStreetMap Nominatim.
+
+console/network problems (tile requests are blocked in this environment and filtered):
+none
