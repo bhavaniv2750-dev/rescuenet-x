@@ -1,3 +1,4 @@
+import { ThemeSwitch } from '../ui/ThemeSwitch';
 import React from 'react';
 import {
   LayoutDashboard, Layers, Activity, Bell, LifeBuoy, Users, Building2, FilePlus, Award, Bot, Database,
@@ -73,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNaviga
         </div>
 
         <div className="sidebar-footer">
+          <ThemeSwitch className="theme-switch-sidebar" />
           <div className="status-connection-card">
             <div className="status-indicator">
               <span className={`status-dot ${backendStatus === 'Connected' ? 'dot-green' : 'dot-red'}`} />

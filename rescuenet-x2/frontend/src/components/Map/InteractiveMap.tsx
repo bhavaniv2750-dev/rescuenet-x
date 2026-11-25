@@ -1,3 +1,4 @@
+import { useTheme } from '../../lib/theme';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MarkerClusterGroup } from 'leaflet.markercluster';
@@ -6,6 +7,9 @@ import type { BasemapId } from './basemaps';
 import { clusterIcon, esc, popup, sevColor } from './markers';
 import { LOCAL_ATTRIBUTION, drawLocal, loadLocalBasemap, paletteFor, searchLocal } from './localBasemap';
 import type { LocalData, LocalHandle, LocalHit, Theme } from './localBasemap';
+import { drawRegional, inBounds, probeRegional } from './regional';
+import type { RegionalHandle, RegionalInfo } from './regional';
+import { searchRegional } from './regionalSearch';
 import { PRESETS, PRESET_ORDER } from './presets';
 import type { PresetId } from './presets';
 import { kindOfFacility, legendSvg, presetIcon } from './styleMarkers';
@@ -30,8 +34,8 @@ interface InteractiveMapProps {
 }
 
 interface Info { title: string; badge: string | null; rows: [string, unknown][]; lat: number; lng: number }
-type BaseChoice = 'auto' | BasemapId | 'local';
-type Active = BasemapId | 'local' | 'none';
+type BaseChoice = 'auto' | BasemapId | 'local' | 'regional';
+type Active = BasemapId | 'local' | 'regional' | 'none';
 // secondary online provider (a different, permitted provider) tried when the first one cannot be reached
 const SECONDARY: Record<BasemapId, BasemapId> = { dark: 'standard', light: 'standard', voyager: 'standard', standard: 'voyager' };
 const BENGALURU: [number, number] = [12.9716, 77.5946];
@@ -58,11 +62,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [preset, setPreset] = useState<PresetId>(forcePreset ?? 'classic');
   const [baseChoice, setBaseChoice] = useState<BaseChoice>('auto');
   const [step, setStep] = useState(0);
-  const [inPublic, setInPublic] = useState(false);
-  useEffect(() => { setInPublic(Boolean(shellRef.current?.closest('[data-shell="public"]'))); }, []);
   const localRef = useRef<LocalHandle | null>(null);
+  const regionalRef = useRef<RegionalHandle | null>(null);
+  const [regional, setRegional] = useState<RegionalInfo | null>(null);   // null: no regional archive is configured or reachable
+  const [outside, setOutside] = useState(false);
+  useEffect(() => { let dead = false; probeRegional().then((i) => { if (!dead) setRegional(i); }); return () => { dead = true; }; }, []);
   const localDataRef = useRef<LocalData | null>(null);
-  const [dark, setDark] = useState(true);                   // Navigation style: light (Voyager) or dark variant
+  const { mapResolved, map: mapPref, setMapAppearance } = useTheme();   // independent of the application theme
   const [tileError, setTileError] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
@@ -75,10 +81,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [searchMsg, setSearchMsg] = useState<string | null>(null);
   const [locMsg, setLocMsg] = useState<string | null>(null);
   const P = PRESETS[preset];
-  const autoBase: BasemapId = preset === 'navigation' && dark ? 'dark' : preset === 'classic' ? (inPublic ? 'light' : 'dark') : P.basemap;
-  const basemap: BasemapId = baseChoice === 'auto' || baseChoice === 'local' ? autoBase : baseChoice;
+  const autoBase: BasemapId = mapResolved === 'dark' ? 'dark' : (preset === 'navigation' || preset === 'flood') ? 'voyager' : 'light';
+  const basemap: BasemapId = baseChoice === 'auto' || baseChoice === 'local' || baseChoice === 'regional' ? autoBase : baseChoice;
   // availability order: chosen online map -> secondary online map -> local offline map -> unavailable
-  const chain: Active[] = baseChoice === 'local' ? ['local', 'none'] : [basemap, SECONDARY[basemap], 'local', 'none'];
+  const chain: Active[] = baseChoice === 'local' ? ['local', 'none']
+    : baseChoice === 'regional' ? [...(regional ? ['regional' as const] : []), 'local', 'none']
+    : [basemap, SECONDARY[basemap], ...(regional ? ['regional' as const] : []), 'local', 'none'];
   const chainKey = chain.join('>');
   const active: Active = chain[Math.min(step, chain.length - 1)];
   const theme: Theme = basemap === 'dark' ? 'dark' : 'light';
@@ -88,7 +96,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   useEffect(() => {
     try {
       const sp = localStorage.getItem(STYLE_KEY) as PresetId | null; if (!forcePreset && sp && PRESETS[sp]) setPreset(sp);
-      const sb = localStorage.getItem(BASEMAP_KEY) as BaseChoice | null; if (sb && (sb === 'local' || BASEMAPS[sb as BasemapId])) setBaseChoice(sb);
+      const sb = localStorage.getItem(BASEMAP_KEY) as BaseChoice | null; if (sb && (sb === 'local' || sb === 'regional' || BASEMAPS[sb as BasemapId])) setBaseChoice(sb);
     } catch { /* optional */ }
   }, [forcePreset]);
   const choosePreset = (id: PresetId) => { setPreset(id); setInfo(null); try { localStorage.setItem(STYLE_KEY, id); } catch { /* optional */ } };
@@ -114,9 +122,18 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const clearLocal = () => { localRef.current?.remove(); localRef.current = null; map.attributionControl.removeAttribution(LOCAL_ATTRIBUTION); };
+    const clearRegional = () => { if (regionalRef.current) { regionalRef.current.remove(); regionalRef.current = null; if (regional) map.attributionControl.removeAttribution(regional.attribution); } };
+    clearRegional();
     if (baseRef.current) { map.removeLayer(baseRef.current); baseRef.current = null; }
     clearLocal(); setTileError(false);
     if (active === 'none') { setMapLoading(false); setTileError(true); return; }
+    if (active === 'regional' && regional) {
+      let dead = false; setMapLoading(true);
+      drawRegional(map, regional, theme, preset, () => { if (!dead) setStep((n) => n + 1); }).then((h) => {
+        if (dead) { h.remove(); return; } regionalRef.current = h; map.attributionControl.addAttribution(regional.attribution); setMapLoading(false);
+      }).catch(() => { if (!dead) setStep((n) => n + 1); });
+      return () => { dead = true; clearRegional(); };
+    }
     if (active === 'local') {
       let dead = false; setMapLoading(true);
       loadLocalBasemap().then((d) => {
@@ -124,6 +141,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       }).catch(() => { if (!dead) setStep((n) => n + 1); });
       return () => { dead = true; clearLocal(); };
     }
+    if (active === 'regional') { setStep((n) => n + 1); return; }   // archive not available: continue down the chain
     const def = BASEMAPS[active]; setMapLoading(true);
     const layer = L.tileLayer(def.url, { attribution: def.attribution, subdomains: def.subdomains ?? 'abc', maxZoom: def.maxZoom });
     let errors = 0, loaded = false, advanced = false;
@@ -133,7 +151,14 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     layer.addTo(map); layer.bringToBack(); baseRef.current = layer;
     const t = window.setTimeout(next, 6000);          // nothing arrived at all: treat the provider as unreachable
     return () => window.clearTimeout(t);
-  }, [active, theme, preset]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, theme, preset, regional]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // tell the user when the view leaves the area the regional archive covers (it never invents data outside it)
+  useEffect(() => {
+    const map = mapRef.current; if (!map || active !== 'regional' || !regional) { setOutside(false); return; }
+    const check = () => { const c = map.getCenter(); setOutside(!inBounds(regional.bounds, c.lat, c.lng)); };
+    check(); map.on('moveend', check); return () => { map.off('moveend', check); };
+  }, [active, regional]);
 
   // ---- helpers
   const pick = useCallback((m: L.Marker, i: Info, id: string | null, open: () => void) => {
@@ -244,7 +269,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const search = async (e: React.FormEvent) => {
     e.preventDefault(); if (q.trim().length < 2) return;
     setSearchMsg('Searching…'); setHits(null);
-    try { const d = await loadLocalBasemap(); const h = searchLocal(d, q); setHits(h); setHitsLabel('Local places (offline data)'); setSearchMsg(h.length ? null : 'No local match. The local data covers BBMP wards, major towns and airports only.'); }
+    try {
+      const c = mapRef.current?.getCenter();
+      const reg = regional ? await searchRegional(q, c ? [c.lat, c.lng] : undefined).catch(() => null) : null;
+      if (reg && reg.length) { setHits(reg); setHitsLabel('Regional places (offline index)'); setSearchMsg(null); return; }
+      const d = await loadLocalBasemap(); const h = searchLocal(d, q); setHits(h); setHitsLabel('Local places (offline data)'); setSearchMsg(h.length ? null : regional ? 'No offline match in the regional index or the basic local data.' : 'No local match. The local data covers BBMP wards, major towns and airports only.');
+    }
     catch { setSearchMsg('Local place data could not be loaded.'); }
   };
   const searchOnline = async () => {
@@ -261,7 +291,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     ex.eachLayer((l) => { if ((l as L.Layer & { _s?: boolean })._s) ex.removeLayer(l); });
     const pos: [number, number] = [h.lat, h.lng];
     const m = L.marker(pos, { icon: L.divIcon({ className: 'rn-m-wrap', html: '<span class="rn-search-pin"></span>', iconSize: [20, 20], iconAnchor: [10, 10] }), title: h.name }) as L.Marker & { _s?: boolean };
-    m._s = true; m.bindPopup(popup(h.name.split(',')[0], 'SEARCH RESULT', [['Place', h.name], ['Kind', h.kind], ['Source', h.online ? 'OpenStreetMap Nominatim (online)' : 'Local offline data']])).addTo(ex).openPopup();
+    m._s = true; m.bindPopup(popup(h.name.split(',')[0], 'SEARCH RESULT', [['Place', h.name], ['Kind', h.kind], ['Source', h.online ? 'OpenStreetMap Nominatim (online)' : hitsLabel.startsWith('Regional') ? 'Regional offline index' : 'Local offline data']])).addTo(ex).openPopup();
     map.flyTo(pos, h.kind.startsWith('BBMP') ? 14 : 13, { duration: 0.7 }); setHits(null); setSearchMsg(null);
   };
 
@@ -279,8 +309,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   ];
 
   return (
-    <div ref={shellRef} className={`rn-map-frame map-host map-${active === 'local' ? 'local-' + theme : basemap} style-${preset}${fullscreen ? ' map-fs' : ''}${P.search ? ' has-search' : ''}`}
-      style={{ height: fullscreen ? undefined : height, ['--map-bg' as string]: active === 'local' ? paletteFor(theme, preset).land : BASEMAPS[basemap].background }} role="region" aria-label={`Interactive map, ${P.label} style`}>
+    <div ref={shellRef} className={`rn-map-frame map-host map-${active === 'local' || active === 'regional' ? 'local-' + theme : basemap} style-${preset}${fullscreen ? ' map-fs' : ''}${P.search ? ' has-search' : ''}`}
+      style={{ height: fullscreen ? undefined : height, ['--map-bg' as string]: active === 'local' || active === 'regional' ? paletteFor(theme, preset).land : BASEMAPS[basemap].background }} role="region" aria-label={`Interactive map, ${P.label} style`}>
       <div ref={mapContainerRef} className="map-canvas" />
 
       {P.search && (
@@ -316,10 +346,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           <p className="map-blurb">{P.blurb}</p>
           <label className="map-select">Base map
             <select value={baseChoice} onChange={(e) => chooseBase(e.target.value as BaseChoice)}>
-              <option value="auto">Automatic (online, then offline)</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label} (online)</option>)}<option value="local">Local offline map</option>
+              <option value="auto">Automatic (online, then offline)</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label} (online)</option>)}{regional && <option value="regional">{regional.isFixture ? 'Regional offline map (TEST FIXTURE)' : 'Regional offline map (vector archive)'}</option>}<option value="local">Local offline map (basic)</option>
             </select>
           </label>
-          {preset === 'navigation' && baseChoice === 'auto' && <label className="map-toggle"><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /><span>Dark variant</span></label>}
+          {baseChoice === 'auto' && <label className="map-select">Map appearance<select value={mapPref} onChange={(e) => setMapAppearance(e.target.value as 'follow' | 'light' | 'dark')}><option value="follow">Follow app theme</option><option value="light">Light</option><option value="dark">Dark</option></select></label>}
           {toggles.filter((t) => t.n > 0 || t.key === 'inc').map((t) => (
             <label key={t.key} className="map-toggle"><input type="checkbox" checked={on[t.key]} onChange={(e) => setOn({ ...on, [t.key]: e.target.checked })} /><span>{t.label}</span><span className="map-count">{t.n}</span></label>
           ))}
@@ -335,15 +365,16 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       </details>
 
       {info && cardMode && (
-        <aside className="map-card" aria-label="Selected item">
-          <button type="button" className="map-card-x" onClick={() => setInfo(null)} aria-label="Close information card">×</button>
+        <aside className="rn-info-card" aria-label="Selected item">
+          <button type="button" className="rn-info-card-x" onClick={() => setInfo(null)} aria-label="Close information card">×</button>
           <div dangerouslySetInnerHTML={{ __html: popup(info.title, info.badge, info.rows) }} />
-          <div className="map-card-actions"><button type="button" onClick={() => mapRef.current?.flyTo([info.lat, info.lng], 16, { duration: 0.6 })}>Zoom to</button></div>
+          <div className="rn-info-card-actions"><button type="button" onClick={() => mapRef.current?.flyTo([info.lat, info.lng], 16, { duration: 0.6 })}>Zoom to</button></div>
         </aside>
       )}
-      <div className={`map-source ${active === 'local' ? 'is-local' : active === 'none' ? 'is-none' : 'is-online'}`} role="status">
-        {active === 'local' ? 'Offline map: locally stored data' : active === 'none' ? 'No base map available' : `Online map: ${BASEMAPS[active].label}`}
-        {active !== 'local' && active !== 'none' && step > 0 ? ' (fallback)' : ''}
+      <div className={`map-source ${active === 'local' || active === 'regional' ? 'is-local' : active === 'none' ? 'is-none' : 'is-online'}`} role="status">
+        {active === 'regional' ? (regional?.isFixture ? 'Offline regional map: TEST FIXTURE' : 'Offline map: regional vector archive') : active === 'local' ? 'Offline map: locally stored data' : active === 'none' ? 'No base map available' : `Online map: ${BASEMAPS[active].label}`}
+        {active !== 'local' && active !== 'regional' && active !== 'none' && step > 0 ? ' (fallback)' : ''}
+        {active === 'regional' && outside ? ' · outside archive coverage' : ''}
       </div>
       {(locMsg || (mapLoading && !tileError)) && <div className="map-status" role="status">{locMsg ?? 'Loading map…'}</div>}
       {tileError && (

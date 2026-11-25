@@ -48,3 +48,7 @@ Bundled data 316 KB raw (wards 194 KB, about 41 KB gzipped); loaded only on fall
 
 ## Search privacy
 Search is local first and sends nothing. "Search online instead" is a separate explicit button that sends the typed text to OSM Nominatim; its results are labelled online.
+
+
+## Regional archive (South India)
+A larger optional layer built from the Geofabrik Southern Zone PBF is described in [REGIONAL_GIS.md](REGIONAL_GIS.md). It sits between the online maps and this basic local map in the fallback chain; this bundled map stays the last offline fallback and is used whenever the regional archive is absent.

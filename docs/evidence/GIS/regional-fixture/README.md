@@ -1,0 +1,5 @@
+# Regional archive code-path screenshots: TEST FIXTURE, not South India
+
+These were captured with external tile hosts blocked and the regional archive served from a **synthetic test fixture** (`scripts/make_regional_fixture.py`), built only from the bundled Natural Earth and BBMP ward data. It contains **no OpenStreetMap data, no residential streets and no buildings**, and the map chip says "TEST FIXTURE". They prove the rendering, theming, fallback and search code paths. They are not evidence that South India renders: that needs the real archive (docs/frontend/REGIONAL_GIS.md, section 9).
+
+Files: `<preset>_<dark|light>_1440.png` (4 presets x 2 themes, same Bengaluru view and zoom), `<preset>_dark_390.png` (mobile), `independent_app-*_map-*_1440.png` (application theme and map appearance set independently), `fallback_archive-missing_basic-local_1440.png` (archive request blocked: basic local map takes over), `search_regional_*` (offline regional search), `mobile_light_nav_drawer_theme_390.png`.

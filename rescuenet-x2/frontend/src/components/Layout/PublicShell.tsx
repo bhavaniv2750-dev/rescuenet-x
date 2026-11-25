@@ -1,3 +1,4 @@
+import { ThemeSwitch } from '../ui/ThemeSwitch';
 import React, { useState } from 'react';
 import { Menu, Phone, Radio, Siren, X } from 'lucide-react';
 import type { AuthUser } from '../../api/types';
@@ -39,8 +40,10 @@ export const PublicShell: React.FC<Props> = ({ sections, activePage, onNavigate,
                 {badges[p] ? <span className="nav-badge">{badges[p]}</span> : null}
               </button>
             ))}
+            <ThemeSwitch className="theme-switch-drawer" />
           </nav>
           <div className="pub-actions">
+            <ThemeSwitch className="theme-switch-header" />
             <button className="pub-report" onClick={() => { setOpen(false); onReport(); }}><Siren size={16} aria-hidden="true" /> <span>Report emergency</span></button>
             <UserMenu user={user} onOpenAccount={() => go('My Account')} onSignOut={onSignOut} onSignIn={onSignIn} />
             <button className="pub-menu-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? 'Close navigation' : 'Open navigation'}>

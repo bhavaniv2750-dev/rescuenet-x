@@ -14,6 +14,9 @@ import "./theme.css";
 import "./design/ui.css";
 import "./design/shell.css";
 import App from "./App";
+import { initTheme } from "./lib/theme";
+
+initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

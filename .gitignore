@@ -87,3 +87,12 @@ backend/backups/
 backend/.jwt_secret
 backend/.mfa_key
 backend/.admin_password
+
+# Regional GIS (large, generated or third-party data: never commit)
+*.osm.pbf
+*.pmtiles
+*.mbtiles
+rescuenet-x2/frontend/regional-data/
+rescuenet-x2/gis-work/
+rescuenet-x2/tools-gis/
+datasets/

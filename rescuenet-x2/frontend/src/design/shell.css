@@ -304,13 +304,13 @@ button.status-pill.pill-active { background: var(--rn-accent-soft); color: var(-
 .map-select { display: grid; gap: 4px; font-size: var(--fs-xs); color: var(--rn-text-soft); font-weight: 600; }
 .map-select select { min-height: 34px; background: var(--rn-surface-2); color: var(--rn-text); border: 1px solid var(--rn-line-strong); border-radius: var(--r-sm); padding: 0 8px; font: 400 var(--fs-sm)/1 var(--font-sans); }
 .map-blurb { font-size: 11px; color: var(--rn-text-dim); line-height: 1.4; margin: 0 0 var(--sp-2); max-width: 240px; }
-.map-card { position: absolute; left: 10px; bottom: 26px; z-index: 950; width: min(300px, calc(100% - 20px)); background: var(--rn-surface-1); border: 1px solid var(--rn-line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-2); max-height: 55%; overflow: auto; }
-.map-card .rn-pop-head { margin-right: 28px; }
-.map-card-x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--rn-surface-3); color: var(--rn-text); font-size: 18px; cursor: pointer; }
-.map-card-actions { padding: 0 var(--sp-3) var(--sp-3); } .map-card-actions button { min-height: 32px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--rn-line-strong); background: var(--rn-surface-2); color: var(--rn-text); font: 600 var(--fs-xs)/1 var(--font-sans); cursor: pointer; }
-.map-host:has(.rn-map-notice) .map-card { bottom: 92px; }
-@media (max-width: 640px) { .map-search { right: 10px; } .has-search .map-layers { top: 58px; } .has-search .map-ctl { top: 58px; } .map-card { bottom: 100px; } }
-.map-card .rn-pop { font-size: var(--fs-sm); }
+.rn-info-card { position: absolute; left: 10px; bottom: 26px; z-index: 950; width: min(300px, calc(100% - 20px)); background: var(--rn-surface-1); border: 1px solid var(--rn-line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-2); max-height: 55%; overflow: auto; }
+.rn-info-card .rn-pop-head { margin-right: 28px; }
+.rn-info-card-x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--rn-surface-3); color: var(--rn-text); font-size: 18px; cursor: pointer; }
+.rn-info-card-actions { padding: 0 var(--sp-3) var(--sp-3); } .rn-info-card-actions button { min-height: 32px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--rn-line-strong); background: var(--rn-surface-2); color: var(--rn-text); font: 600 var(--fs-xs)/1 var(--font-sans); cursor: pointer; }
+.map-host:has(.rn-map-notice) .rn-info-card { bottom: 92px; }
+@media (max-width: 640px) { .map-search { right: 10px; } .has-search .map-layers { top: 58px; } .has-search .map-ctl { top: 58px; } .rn-info-card { bottom: 100px; } }
+.rn-info-card .rn-pop { font-size: var(--fs-sm); }
 
 /* ===== local offline basemap ===== */
 .map-source { position: absolute; left: 10px; bottom: 6px; z-index: 900; padding: 3px 10px; border-radius: var(--r-pill); font: 600 11px/1.6 var(--font-sans); background: var(--rn-surface-1); border: 1px solid var(--rn-line-strong); color: var(--rn-text-soft); max-width: calc(100% - 20px); }
@@ -331,3 +331,31 @@ button.status-pill.pill-active { background: var(--rn-accent-soft); color: var(-
 .map-local-light .map-search input::placeholder { color: #5b6878; }
 .map-search-results { position: relative; z-index: 1002; }
 .map-search:has(.map-search-results) ~ .map-layers { display: none; }
+
+/* ---- theme switch (System / Light / Dark) */
+.theme-switch { display: inline-flex; border: 1px solid var(--rn-line-strong); border-radius: var(--r-pill); background: var(--rn-surface-2); padding: 2px; gap: 2px; }
+.theme-switch-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--rn-text-soft); font: 600 var(--fs-xs)/1 var(--font-sans); cursor: pointer; }
+.theme-switch-btn:hover { background: var(--rn-surface-3); }
+.theme-switch-btn.on { background: var(--rn-accent); color: var(--rn-on-accent); }
+@media (max-width: 1100px) { .theme-switch-label { display: none; } .theme-switch-btn { padding: 0 9px; min-width: 32px; justify-content: center; } }
+.rn-field-row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+
+/* ---- light-theme corrections for controls that used fixed light-on-dark colours */
+:root[data-theme="light"] .pub-report { color: var(--sev-critical); background: var(--sev-critical-bg); }
+:root[data-theme="light"] .pub-report:hover { background: rgba(198, 40, 40, 0.18); }
+:root[data-theme="light"] .btn-danger-soft { color: var(--sev-critical); background: var(--sev-critical-bg); border-color: var(--sev-critical); }
+:root[data-theme="light"] .sev-critical, :root[data-theme="light"] .nav-badge { color: var(--sev-critical); }
+:root[data-theme="light"] .sev-high { color: var(--sev-high); }
+:root[data-theme="light"] .sev-warning { color: var(--sev-moderate); }
+:root[data-theme="light"] .sev-info { color: var(--rn-accent-strong); }
+/* theme switch placement: header on wide screens, inside the navigation drawer / sidebar on small ones */
+.theme-switch-drawer, .theme-switch-sidebar { display: none; }
+.theme-switch-sidebar { margin-bottom: 10px; }
+@media (max-width: 640px) {
+  .theme-switch-header { display: none; }
+  .theme-switch-drawer { display: inline-flex; margin: 8px 12px; align-self: flex-start; }
+  .theme-switch-drawer .theme-switch-label, .theme-switch-sidebar .theme-switch-label { display: inline; }
+  .theme-switch-sidebar { display: inline-flex; }
+}
+/* the public header (and its mobile navigation drawer) must stack above Leaflet's panes and controls */
+.pub-header { z-index: 3000; }

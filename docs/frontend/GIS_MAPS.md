@@ -39,3 +39,6 @@ No traffic, no routing/ETA, no building layer of our own, no inundation or heatm
 
 ## Update: local offline basemap
 The blank-background problem is resolved by an automatic fallback chain (configured online map, secondary online map, locally served geography, explicit unavailable state). See [LOCAL_BASEMAP.md](LOCAL_BASEMAP.md). Older screenshots that showed a blank background were removed; current evidence is in `docs/evidence/GIS/offline/`.
+
+
+Regional vector archive and the global theme system: see [REGIONAL_GIS.md](REGIONAL_GIS.md).

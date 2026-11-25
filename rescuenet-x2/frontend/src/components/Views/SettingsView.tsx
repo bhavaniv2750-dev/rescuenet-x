@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Capabilities } from '../../api/types';
+import { useTheme } from '../../lib/theme';
+import { ThemeSwitch } from '../ui/ThemeSwitch';
 import { Button, PageHeader, Panel, ProvenanceBadge, StatusBadge } from '../ui';
 
 interface Props { backendStatus?: string; onRefresh?: () => void }  // onRefresh kept for the shell's call signature
 
-const LOCAL_KEYS = ['rescuenet.sidebar.collapsed', 'rescuenet.guest'];
+const LOCAL_KEYS = ['rescuenet.sidebar.collapsed', 'rescuenet.guest', 'rescuenet.theme', 'rescuenet.maptheme', 'rescuenet.mapstyle', 'rescuenet.basemap'];
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://127.0.0.1:8000/api';
 
 /** Read-only view of what this deployment can really do, plus the few preferences stored in this browser. There are no fake switches: a
@@ -26,6 +28,7 @@ export const SettingsView: React.FC<Props> = ({ backendStatus }) => {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const { map: mapPref, setMapAppearance } = useTheme();
   const email = caps?.email_delivery;
   return (
     <div className="settings-page">
@@ -52,6 +55,15 @@ export const SettingsView: React.FC<Props> = ({ backendStatus }) => {
             <dt>Push notifications</dt><dd><StatusBadge tone="danger">Not implemented</StatusBadge></dd>
             <dt>Alerts</dt><dd>Shown inside this app, with CAP 1.2 export. They are not sent to phones.</dd>
           </dl>
+        </Panel>
+        <Panel title="Appearance">
+          <p className="rn-field-hint">The application theme and the map appearance are independent. System follows your operating system setting.</p>
+          <div className="rn-field-row"><span>Application theme</span> <ThemeSwitch /></div>
+          <label className="map-select" style={{ marginTop: 12 }}>Map appearance
+            <select value={mapPref} onChange={(e) => setMapAppearance(e.target.value as 'follow' | 'light' | 'dark')}>
+              <option value="follow">Follow application theme</option><option value="light">Always light</option><option value="dark">Always dark</option>
+            </select>
+          </label>
         </Panel>
         <Panel title="This browser">
           <p className="rn-field-hint">Only convenience choices are stored here (for example whether the sidebar is collapsed). Nothing sensitive, and nothing is sent to the server.</p>
