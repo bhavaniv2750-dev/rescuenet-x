@@ -1,0 +1,68 @@
+{
+ "built": "2026-11-25",
+ "window_karnataka": [
+  74.0,
+  11.5,
+  78.8,
+  18.6
+ ],
+ "bengaluru_ward_extent": [
+  77.4599,
+  12.8335,
+  77.7844,
+  13.1426
+ ],
+ "files": {
+  "roads": {
+   "features": 42,
+   "bytes": 18783
+  },
+  "rail": {
+   "features": 40,
+   "bytes": 19394
+  },
+  "rivers": {
+   "features": 9,
+   "bytes": 13893
+  },
+  "lakes": {
+   "features": 4,
+   "bytes": 2777
+  },
+  "places": {
+   "features": 26,
+   "bytes": 4772
+  },
+  "airports": {
+   "features": 4,
+   "bytes": 629
+  },
+  "urban": {
+   "features": 90,
+   "bytes": 30469
+  },
+  "states": {
+   "features": 7,
+   "bytes": 29967
+  },
+  "wards": {
+   "features": 243,
+   "bytes": 193830
+  }
+ },
+ "sources": [
+  {
+   "name": "Natural Earth 10m (roads, railroads, rivers and lake centerlines, lakes, populated places, airports, urban areas, admin-1)",
+   "url": "https://www.naturalearthdata.com/",
+   "licence": "Public domain",
+   "note": "small-scale data: major roads only, no residential streets"
+  },
+  {
+   "name": "BBMP wards 2022 (243 wards), scraped from KSRSAC KGIS by DataMeet",
+   "url": "https://github.com/datameet/Municipal_Spatial_Data/tree/master/Bangalore",
+   "licence": "CC BY-SA 2.5 India",
+   "note": "ward names are the neighbourhood names shown"
+  }
+ ],
+ "osm_layers_present": false
+}

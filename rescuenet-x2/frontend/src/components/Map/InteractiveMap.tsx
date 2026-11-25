@@ -4,6 +4,8 @@ import { MarkerClusterGroup } from 'leaflet.markercluster';
 import { BASEMAPS, BASEMAP_KEY, STYLE_KEY } from './basemaps';
 import type { BasemapId } from './basemaps';
 import { clusterIcon, esc, popup, sevColor } from './markers';
+import { LOCAL_ATTRIBUTION, drawLocal, loadLocalBasemap, paletteFor, searchLocal } from './localBasemap';
+import type { LocalData, LocalHandle, LocalHit, Theme } from './localBasemap';
 import { PRESETS, PRESET_ORDER } from './presets';
 import type { PresetId } from './presets';
 import { kindOfFacility, legendSvg, presetIcon } from './styleMarkers';
@@ -28,7 +30,10 @@ interface InteractiveMapProps {
 }
 
 interface Info { title: string; badge: string | null; rows: [string, unknown][]; lat: number; lng: number }
-interface GeoHit { display_name: string; lat: string; lon: string }
+type BaseChoice = 'auto' | BasemapId | 'local';
+type Active = BasemapId | 'local' | 'none';
+// secondary online provider (a different, permitted provider) tried when the first one cannot be reached
+const SECONDARY: Record<BasemapId, BasemapId> = { dark: 'standard', light: 'standard', voyager: 'standard', standard: 'voyager' };
 const BENGALURU: [number, number] = [12.9716, 77.5946];
 
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
@@ -51,7 +56,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   const [on, setOn] = useState({ catch: true, inc: true, team: true, fac: true, gauge: true, alert: true });
   const [preset, setPreset] = useState<PresetId>(forcePreset ?? 'classic');
-  const [baseChoice, setBaseChoice] = useState<'auto' | BasemapId>('auto');
+  const [baseChoice, setBaseChoice] = useState<BaseChoice>('auto');
+  const [step, setStep] = useState(0);
+  const [inPublic, setInPublic] = useState(false);
+  useEffect(() => { setInPublic(Boolean(shellRef.current?.closest('[data-shell="public"]'))); }, []);
+  const localRef = useRef<LocalHandle | null>(null);
+  const localDataRef = useRef<LocalData | null>(null);
   const [dark, setDark] = useState(true);                   // Navigation style: light (Voyager) or dark variant
   const [tileError, setTileError] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
@@ -60,22 +70,29 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [selId, setSelId] = useState<string | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [q, setQ] = useState('');
-  const [hits, setHits] = useState<GeoHit[] | null>(null);
+  const [hits, setHits] = useState<(LocalHit & { online?: boolean })[] | null>(null);
+  const [hitsLabel, setHitsLabel] = useState('');
   const [searchMsg, setSearchMsg] = useState<string | null>(null);
   const [locMsg, setLocMsg] = useState<string | null>(null);
   const P = PRESETS[preset];
-  const basemap: BasemapId = baseChoice !== 'auto' ? baseChoice : preset === 'navigation' && dark ? 'dark' : preset === 'classic' ? (shellRef.current?.closest('[data-shell="public"]') ? 'light' : 'dark') : P.basemap;
+  const autoBase: BasemapId = preset === 'navigation' && dark ? 'dark' : preset === 'classic' ? (inPublic ? 'light' : 'dark') : P.basemap;
+  const basemap: BasemapId = baseChoice === 'auto' || baseChoice === 'local' ? autoBase : baseChoice;
+  // availability order: chosen online map -> secondary online map -> local offline map -> unavailable
+  const chain: Active[] = baseChoice === 'local' ? ['local', 'none'] : [basemap, SECONDARY[basemap], 'local', 'none'];
+  const chainKey = chain.join('>');
+  const active: Active = chain[Math.min(step, chain.length - 1)];
+  const theme: Theme = basemap === 'dark' ? 'dark' : 'light';
   const cardMode = P.cards;
 
   // restore remembered choices (this browser only)
   useEffect(() => {
     try {
       const sp = localStorage.getItem(STYLE_KEY) as PresetId | null; if (!forcePreset && sp && PRESETS[sp]) setPreset(sp);
-      const sb = localStorage.getItem(BASEMAP_KEY) as BasemapId | null; if (sb && BASEMAPS[sb]) setBaseChoice(sb);
+      const sb = localStorage.getItem(BASEMAP_KEY) as BaseChoice | null; if (sb && (sb === 'local' || BASEMAPS[sb as BasemapId])) setBaseChoice(sb);
     } catch { /* optional */ }
   }, [forcePreset]);
   const choosePreset = (id: PresetId) => { setPreset(id); setInfo(null); try { localStorage.setItem(STYLE_KEY, id); } catch { /* optional */ } };
-  const chooseBase = (id: 'auto' | BasemapId) => { setBaseChoice(id); try { id === 'auto' ? localStorage.removeItem(BASEMAP_KEY) : localStorage.setItem(BASEMAP_KEY, id); } catch { /* optional */ } };
+  const chooseBase = (id: BaseChoice) => { setBaseChoice(id); try { id === 'auto' ? localStorage.removeItem(BASEMAP_KEY) : localStorage.setItem(BASEMAP_KEY, id); } catch { /* optional */ } };
 
   // ---- map creation
   useEffect(() => {
@@ -92,21 +109,31 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     return () => { map.remove(); mapRef.current = null; baseRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- basemap
+  // ---- basemap with automatic fallback (online -> secondary online -> local offline -> unavailable)
+  useEffect(() => { setStep(0); }, [chainKey]);
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
-    const def = BASEMAPS[basemap];
-    if (baseRef.current) map.removeLayer(baseRef.current);
-    setTileError(false); setMapLoading(true);
+    const clearLocal = () => { localRef.current?.remove(); localRef.current = null; map.attributionControl.removeAttribution(LOCAL_ATTRIBUTION); };
+    if (baseRef.current) { map.removeLayer(baseRef.current); baseRef.current = null; }
+    clearLocal(); setTileError(false);
+    if (active === 'none') { setMapLoading(false); setTileError(true); return; }
+    if (active === 'local') {
+      let dead = false; setMapLoading(true);
+      loadLocalBasemap().then((d) => {
+        if (dead) return; localDataRef.current = d; localRef.current = drawLocal(map, d, theme, preset); map.attributionControl.addAttribution(LOCAL_ATTRIBUTION); setMapLoading(false);
+      }).catch(() => { if (!dead) setStep((n) => n + 1); });
+      return () => { dead = true; clearLocal(); };
+    }
+    const def = BASEMAPS[active]; setMapLoading(true);
     const layer = L.tileLayer(def.url, { attribution: def.attribution, subdomains: def.subdomains ?? 'abc', maxZoom: def.maxZoom });
-    let errors = 0;
-    layer.on('tileerror', () => { errors += 1; if (errors >= 2) setTileError(true); });
-    layer.on('tileload', () => { errors = 0; setTileError(false); setMapLoading(false); });
-    layer.on('load', () => setMapLoading(false));
+    let errors = 0, loaded = false, advanced = false;
+    const next = () => { if (!advanced && !loaded) { advanced = true; setStep((n) => n + 1); } };
+    layer.on('tileerror', () => { errors += 1; if (errors >= 3) next(); });
+    layer.on('tileload', () => { loaded = true; errors = 0; setMapLoading(false); });
     layer.addTo(map); layer.bringToBack(); baseRef.current = layer;
-    const t = window.setTimeout(() => setMapLoading(false), 8000);
+    const t = window.setTimeout(next, 6000);          // nothing arrived at all: treat the provider as unreachable
     return () => window.clearTimeout(t);
-  }, [basemap]);
+  }, [active, theme, preset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- helpers
   const pick = useCallback((m: L.Marker, i: Info, id: string | null, open: () => void) => {
@@ -212,23 +239,30 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       map.flyTo(here, 15, { duration: 0.7 }); setLocMsg(`Your location (accuracy about ${Math.round(pos.coords.accuracy)} m). Shown only on your screen.`);
     }, () => setLocMsg('Location was not shared.'), { enableHighAccuracy: true, timeout: 10000 });
   };
-  // Place search: OpenStreetMap Nominatim, only when the button is pressed (no autocomplete), results are real places. The typed text is sent to that service.
+  // Place search. Local names (wards, towns, airports, any OSM places) are searched first and offline. Online geocoding (OpenStreetMap Nominatim) runs only when
+  // the button is pressed and sends the typed text to that service.
   const search = async (e: React.FormEvent) => {
-    e.preventDefault(); if (q.trim().length < 3) return;
+    e.preventDefault(); if (q.trim().length < 2) return;
     setSearchMsg('Searching…'); setHits(null);
+    try { const d = await loadLocalBasemap(); const h = searchLocal(d, q); setHits(h); setHitsLabel('Local places (offline data)'); setSearchMsg(h.length ? null : 'No local match. The local data covers BBMP wards, major towns and airports only.'); }
+    catch { setSearchMsg('Local place data could not be loaded.'); }
+  };
+  const searchOnline = async () => {
+    setSearchMsg('Searching online…');
     try {
       const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&viewbox=77.3,13.3,77.9,12.7&q=${encodeURIComponent(q.trim())}`, { headers: { Accept: 'application/json' } });
       if (!r.ok) throw new Error(String(r.status));
-      const j = (await r.json()) as GeoHit[]; setHits(j); setSearchMsg(j.length ? null : 'No matching place found.');
-    } catch { setSearchMsg('Place search is unavailable (the geocoding service could not be reached).'); }
+      const j = (await r.json()) as { display_name: string; lat: string; lon: string }[];
+      setHits(j.map((x) => ({ name: x.display_name, kind: 'OpenStreetMap place', lat: parseFloat(x.lat), lng: parseFloat(x.lon), online: true }))); setHitsLabel('Online results (OpenStreetMap Nominatim)'); setSearchMsg(j.length ? null : 'No matching place found online.');
+    } catch { setSearchMsg('Online place search is unavailable (the geocoding service could not be reached).'); }
   };
-  const goHit = (h: GeoHit) => {
+  const goHit = (h: LocalHit & { online?: boolean }) => {
     const map = mapRef.current, ex = extraRef.current; if (!map || !ex) return;
     ex.eachLayer((l) => { if ((l as L.Layer & { _s?: boolean })._s) ex.removeLayer(l); });
-    const pos: [number, number] = [parseFloat(h.lat), parseFloat(h.lon)];
-    const m = L.marker(pos, { icon: L.divIcon({ className: 'rn-m-wrap', html: '<span class="rn-search-pin"></span>', iconSize: [20, 20], iconAnchor: [10, 10] }), title: h.display_name }) as L.Marker & { _s?: boolean };
-    m._s = true; m.bindPopup(popup(h.display_name.split(',')[0], 'SEARCH RESULT', [['Place', h.display_name], ['Source', 'OpenStreetMap Nominatim']])).addTo(ex).openPopup();
-    map.flyTo(pos, 16, { duration: 0.7 }); setHits(null); setSearchMsg(null);
+    const pos: [number, number] = [h.lat, h.lng];
+    const m = L.marker(pos, { icon: L.divIcon({ className: 'rn-m-wrap', html: '<span class="rn-search-pin"></span>', iconSize: [20, 20], iconAnchor: [10, 10] }), title: h.name }) as L.Marker & { _s?: boolean };
+    m._s = true; m.bindPopup(popup(h.name.split(',')[0], 'SEARCH RESULT', [['Place', h.name], ['Kind', h.kind], ['Source', h.online ? 'OpenStreetMap Nominatim (online)' : 'Local offline data']])).addTo(ex).openPopup();
+    map.flyTo(pos, h.kind.startsWith('BBMP') ? 14 : 13, { duration: 0.7 }); setHits(null); setSearchMsg(null);
   };
 
   const toggles: { key: keyof typeof on; label: string; n: number }[] = [
@@ -245,19 +279,20 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   ];
 
   return (
-    <div ref={shellRef} className={`rn-map-frame map-host map-${basemap} style-${preset}${fullscreen ? ' map-fs' : ''}${P.search ? ' has-search' : ''}`}
-      style={{ height: fullscreen ? undefined : height, ['--map-bg' as string]: BASEMAPS[basemap].background }} role="region" aria-label={`Interactive map, ${P.label} style`}>
+    <div ref={shellRef} className={`rn-map-frame map-host map-${active === 'local' ? 'local-' + theme : basemap} style-${preset}${fullscreen ? ' map-fs' : ''}${P.search ? ' has-search' : ''}`}
+      style={{ height: fullscreen ? undefined : height, ['--map-bg' as string]: active === 'local' ? paletteFor(theme, preset).land : BASEMAPS[basemap].background }} role="region" aria-label={`Interactive map, ${P.label} style`}>
       <div ref={mapContainerRef} className="map-canvas" />
 
       {P.search && (
         <form className="map-search" onSubmit={search} role="search" aria-label="Search for a place">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a place in Bengaluru" aria-label="Search for a place" maxLength={120} />
-          <button type="submit" disabled={q.trim().length < 3}>Search</button>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a ward, town or place" aria-label="Search for a place" maxLength={120} />
+          <button type="submit" disabled={q.trim().length < 2}>Search</button>
           {(hits || searchMsg) && (
             <div className="map-search-results" role="status">
+              {hits && <p className="note"><strong>{hitsLabel}</strong></p>}
               {searchMsg && <p>{searchMsg}</p>}
-              {hits?.map((h) => <button type="button" key={`${h.lat}${h.lon}${h.display_name}`} onClick={() => goHit(h)}>{h.display_name}</button>)}
-              <p className="note">Search sends your text to OpenStreetMap Nominatim.</p>
+              {hits?.map((h) => <button type="button" key={`${h.lat}${h.lng}${h.name}`} onClick={() => goHit(h)}>{h.name} <span className="kind">{h.kind}</span></button>)}
+              <button type="button" className="online" onClick={searchOnline}>Search online instead (sends your text to OpenStreetMap Nominatim)</button>
             </div>
           )}
         </form>
@@ -280,8 +315,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           </label>
           <p className="map-blurb">{P.blurb}</p>
           <label className="map-select">Base map
-            <select value={baseChoice} onChange={(e) => chooseBase(e.target.value as 'auto' | BasemapId)}>
-              <option value="auto">Automatic for this style</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label}</option>)}
+            <select value={baseChoice} onChange={(e) => chooseBase(e.target.value as BaseChoice)}>
+              <option value="auto">Automatic (online, then offline)</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label} (online)</option>)}<option value="local">Local offline map</option>
             </select>
           </label>
           {preset === 'navigation' && baseChoice === 'auto' && <label className="map-toggle"><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /><span>Dark variant</span></label>}
@@ -306,10 +341,14 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           <div className="map-card-actions"><button type="button" onClick={() => mapRef.current?.flyTo([info.lat, info.lng], 16, { duration: 0.6 })}>Zoom to</button></div>
         </aside>
       )}
+      <div className={`map-source ${active === 'local' ? 'is-local' : active === 'none' ? 'is-none' : 'is-online'}`} role="status">
+        {active === 'local' ? 'Offline map: locally stored data' : active === 'none' ? 'No base map available' : `Online map: ${BASEMAPS[active].label}`}
+        {active !== 'local' && active !== 'none' && step > 0 ? ' (fallback)' : ''}
+      </div>
       {(locMsg || (mapLoading && !tileError)) && <div className="map-status" role="status">{locMsg ?? 'Loading map…'}</div>}
       {tileError && (
         <div className="rn-map-notice" role="status">
-          The base map could not be loaded (no connection to the tile server). Pins and polygons are still drawn at their true positions; only the background is missing. Try another base map or check your connection.
+          No online base map is reachable and the local offline map data could not be loaded. Pins and polygons are still drawn at their true positions; only the background is missing.
         </div>
       )}
     </div>

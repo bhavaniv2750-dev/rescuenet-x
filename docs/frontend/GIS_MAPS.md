@@ -23,7 +23,7 @@ Choose in the map's "Style and layers" panel (remembered in this browser only; t
 
 Common to all: zoom-aware marker size, clustering, hover and selected states, "Fit all data", "Recenter on Bengaluru" (default view), "Show my location" (your own position, shown only on your screen), full screen, collapsible style/layer panel and legend (legend swatches are drawn with the same marker markup), smooth fly-to transitions.
 
-### Honest comparison (judged from the screenshots in `docs/evidence/GIS/presets/`, tile-less)
+### Honest comparison (judged from the screenshots in `docs/evidence/GIS/offline/`, captured with all external tile hosts blocked; see LOCAL_BASEMAP.md)
 * **Readability.** Navigation and Flood Intelligence have the highest contrast of pins against a light road map and the most familiar look; Tactical has the strongest incident emphasis in a dark room but dark pins on a dark map rely on the coloured outline; Classic is the most compact and least distinctive. Only Flood Intelligence and Navigation differ by shape per category (accessibility); Tactical differs by icon and severity glyph.
 * **Performance.** Same markers, same clustering: switching style rebuilds the marker layers in about 80 to 120 ms with 17 incidents, 5 squads, 9 facilities and 23 gauges (scripted measurement, `browser_run.txt`). Rings use one CSS animation each and are limited to critical incidents. No measurable difference between presets at this data size; larger datasets were not tested.
 * **Usability.** Navigation and Flood add a search box and an information card (better for touch, no popup tail covering pins). Tactical keeps popups and adds floating labels, which can crowd at medium zoom (only critical/selected incidents are labelled to limit this). On phones the panels are collapsed by default and controls are 44 px.
@@ -35,3 +35,7 @@ Place search uses the public Nominatim service only when the Search button is pr
 
 ### Limits and deferred
 No traffic, no routing/ETA, no building layer of our own, no inundation or heatmap layers (nothing supports them), no volunteers (no coordinates), no MapLibre/vector tiles, no offline maps. A locally hosted tile source or vector tiles would be the next step for production use.
+
+
+## Update: local offline basemap
+The blank-background problem is resolved by an automatic fallback chain (configured online map, secondary online map, locally served geography, explicit unavailable state). See [LOCAL_BASEMAP.md](LOCAL_BASEMAP.md). Older screenshots that showed a blank background were removed; current evidence is in `docs/evidence/GIS/offline/`.

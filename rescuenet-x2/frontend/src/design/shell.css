@@ -311,3 +311,23 @@ button.status-pill.pill-active { background: var(--rn-accent-soft); color: var(-
 .map-host:has(.rn-map-notice) .map-card { bottom: 92px; }
 @media (max-width: 640px) { .map-search { right: 10px; } .has-search .map-layers { top: 58px; } .has-search .map-ctl { top: 58px; } .map-card { bottom: 100px; } }
 .map-card .rn-pop { font-size: var(--fs-sm); }
+
+/* ===== local offline basemap ===== */
+.map-source { position: absolute; left: 10px; bottom: 6px; z-index: 900; padding: 3px 10px; border-radius: var(--r-pill); font: 600 11px/1.6 var(--font-sans); background: var(--rn-surface-1); border: 1px solid var(--rn-line-strong); color: var(--rn-text-soft); max-width: calc(100% - 20px); }
+.map-source.is-online { border-color: var(--rn-ok); } .map-source.is-local { border-color: var(--rn-info); color: var(--rn-info); } .map-source.is-none { border-color: var(--rn-danger); color: #fecaca; }
+.rn-geo-label span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font: 600 11px/1 var(--font-sans); color: var(--lab); text-shadow: -1px -1px 0 var(--halo), 1px -1px 0 var(--halo), -1px 1px 0 var(--halo), 1px 1px 0 var(--halo), 0 0 3px var(--halo); pointer-events: none; }
+.rn-geo-label.place span { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.rn-geo-label.ward span { font-size: 10px; font-weight: 500; opacity: .9; }
+.rn-geo-label.air span { font-size: 11px; font-style: italic; }
+.map-local-light .rn-cluster, .map-local-light .map-search input { background: #fff; }
+.map-local-light .rn-cluster { color: #0a101c; border-color: var(--rn-accent-strong); }
+.map-local-light .leaflet-control-attribution { background: rgba(255,255,255,.85) !important; color: #334155 !important; }
+.map-local-light .leaflet-control-attribution a { color: #0e7490 !important; }
+.map-local-dark .leaflet-control-attribution { background: rgba(10,16,28,.85) !important; color: var(--rn-text-soft) !important; }
+.map-search-results .kind { display: block; font-size: 11px; color: var(--rn-text-dim); }
+.map-search-results .online { color: var(--rn-accent); font-size: var(--fs-xs); }
+.map-local-light .rn-label, .map-local-light .map-source { background: rgba(255,255,255,.92); color: #0f172a; border-color: #cbd5e1; }
+.map-local-light .map-search input { color: #14202e; }
+.map-local-light .map-search input::placeholder { color: #5b6878; }
+.map-search-results { position: relative; z-index: 1002; }
+.map-search:has(.map-search-results) ~ .map-layers { display: none; }
