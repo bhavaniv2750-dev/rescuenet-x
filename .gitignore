@@ -96,3 +96,6 @@ rescuenet-x2/frontend/regional-data/
 rescuenet-x2/gis-work/
 rescuenet-x2/tools-gis/
 datasets/
+
+# Personal academic report (never commit)
+report/
