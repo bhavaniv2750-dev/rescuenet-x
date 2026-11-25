@@ -1,0 +1,47 @@
+guest: /public/report opens the public reporting form directly without an account; sidebar shell is public: true
+guest: report accepted by the server; receipt shows a reference and a tracking code (values not recorded here); copy control: true; save control: true
+guest: tracking with reference + code shows a status: true
+guest: tracking with a wrong code is refused: HTTP 404
+mobile: reporting form at 390 px, horizontal overflow 0
+mobile: 360 px overflow 0
+citizen: registered through the UI; workspace = Home | Flood Digital Twin | Flood Forecasting | Emergency Alerts | Facilities & Shelters | My Reports | My Account
+citizen: My Reports lists the citizen's own report: true
+citizen: console path /console/overview is Unauthorized: true
+volunteer: verification status shown on My Account: true
+volunteer: contact verification completed through the development outbox: true
+operator: signed in with password + authenticator code; console navigation = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | My Account
+commander: console navigation (13) = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | Audit Log | My Account
+commander: shell is the operations console: true; sidebar collapse control present: true
+operator: console navigation (12) = Overview | Rescue Operations | AI Supervisor | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Data & Models | Volunteer Coordination | Facilities & Shelters | Rescue Records | Incident Reports | My Account
+operator: shell is the operations console: true; sidebar collapse control present: true
+officer: console navigation (8) = My Missions | Emergency Alerts | Flood Digital Twin | Flood Forecasting | Facilities & Shelters | Rescue Records | Report Emergency | My Account
+officer: shell is the operations console: true; sidebar collapse control present: true
+admin: console navigation (10) = Emergency Alerts | Flood Forecasting | Data & Models | Facilities & Shelters | Admin Console | Agencies & Invitations | Audit Log | Diagnostics | Settings | My Account
+admin: shell is the operations console: true; sidebar collapse control present: true
+developer: console navigation (3) = Data & Models | Diagnostics | My Account
+developer: shell is the operations console: true; sidebar collapse control present: true
+mobile: commander Overview at 390px overflow 0
+mobile: commander Rescue Operations at 390px overflow 0
+mobile: commander Flood Digital Twin at 390px overflow 0
+mobile: commander Overview at 768px overflow 0
+mobile: commander Rescue Operations at 768px overflow 0
+mobile: commander Flood Digital Twin at 768px overflow 0
+commander: /console/admin -> unauthorized page: true; console content rendered: false
+operator: /console/audit -> unauthorized page: true; console content rendered: false
+officer: /console/operations -> unauthorized page: true; console content rendered: false
+admin: /console/incidents -> unauthorized page: true; console content rendered: false
+developer: /console/operations -> unauthorized page: true; console content rendered: false
+dispatch: the guest-reported CRITICAL incident appears in the registry: true
+dispatch: actions offered after verification = Queue | Run Supervisor Triage
+dispatch: triage requested; notice: Supervisor task TASK-805 created. INC-SM5G48WV is waiting for commander approval in the Supervisor view.
+✕
+approval: a pending task awaits commander approval in the AI Supervisor: true
+approval: an OPERATOR calling the commander-only approval endpoint is refused: HTTP 403
+private media: staff see the evidence through authenticated requests; image elements found: 1
+private media: an anonymous request for an evidence file: HTTP 401
+private media: an anonymous media request by id: HTTP 401
+session: after revocation by an administrator the browser returns to sign-in with an explanation
+invitation: acceptance -> contact verification -> mandatory MFA enrolment: true
+
+Console errors and failed network requests observed (HTTP 401/403/404 below are the expected refusals this run provoked on purpose):
+developer: HTTP 401 GET /api/diagnostics/

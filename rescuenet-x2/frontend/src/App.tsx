@@ -68,7 +68,9 @@ function Shell() {
   const [guest, setGuest] = useState<boolean>(() => {
     try {
       // A public-namespace address (/public/...) is public information: it opens without an account.
-      return sessionStorage.getItem(GUEST_KEY) === '1' || window.location.pathname.startsWith('/public/');
+      if (sessionStorage.getItem(GUEST_KEY) === '1') return true;
+      if (window.location.pathname.startsWith('/public/')) { sessionStorage.setItem(GUEST_KEY, '1'); return true; }
+      return false;
     } catch {
       return false;
     }

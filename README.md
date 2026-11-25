@@ -43,6 +43,7 @@ API documentation: <http://127.0.0.1:8000/docs>. Health check: <http://127.0.0.1
 cd rescuenet-x2/frontend
 npm ci
 npm run dev
+# tests: npm test   (Vitest)   build: npm run build
 ```
 
 Open <http://localhost:5173>.

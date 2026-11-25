@@ -50,7 +50,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
     <div className="forecasting-container">
       <PageHeader title="Flood risk forecasting"
         description="A scenario tool: a classifier estimates flood risk from the inputs you set. It is not a live forecast and does not read current sensors."
-        meta={<><ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">Model trained on a 1,000-record historical dataset</span><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">Inputs are scenario values you choose</span></>} />
+        meta={<><ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">Trained on 1,000 records supplied with the project; their collection method is not independently verified here</span><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">Inputs are scenario values you choose</span></>} />
 
       <div className="fc-grid">
         <Panel title="Scenario inputs" actions={<span className="rn-field-hint">Presets:</span>}>
@@ -98,7 +98,7 @@ export const ForecastingView: React.FC<ForecastingViewProps> = ({ initialForecas
                 <dl className="fc-dl">
                   <dt>Model</dt><dd>{forecast.model_name} ({m?.model_architecture})</dd>
                   <dt>Confidence note</dt><dd>{forecast.confidence_level}</dd>
-                  <dt>Training data</dt><dd><code>{forecast.data_source}</code> · {m?.training_samples} training / {m?.test_samples} test records</dd>
+                  <dt>Training data</dt><dd><code>{forecast.data_source.split(' ')[0]}</code> · {m?.training_samples} training / {m?.test_samples} test records (supplied with the project; origin not independently verified)</dd>
                   <dt>Inputs used</dt><dd>{m?.model_inputs?.join(', ') ?? 'weather inputs'}</dd>
                 </dl>
               </section>

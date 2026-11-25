@@ -195,3 +195,13 @@
 .rn-page-head p, .rn-page-meta { overflow-wrap: anywhere; }
 .mini-alert-top { flex-wrap: wrap; gap: var(--sp-2); }
 .mini-alert-card { min-width: 0; overflow-wrap: anywhere; }
+.twin-layout-grid { grid-template-columns: minmax(0, 1fr) !important; }
+
+/* ===== incident directory (legacy markup) ===== */
+button.status-pill { font-family: var(--font-sans); border: 1px solid var(--rn-line-strong); background: var(--rn-surface-2); color: var(--rn-text-soft); border-radius: var(--r-pill); min-height: 28px; white-space: nowrap; }
+button.status-pill:hover { background: var(--rn-surface-3); color: var(--rn-text); }
+button.status-pill.pill-active { background: var(--rn-accent-soft); color: var(--rn-accent); border-color: var(--rn-accent-strong); }
+.incident-dir-list input[type='text'] { width: 100%; min-height: var(--h-control); background: var(--rn-surface-2); color: var(--rn-text); border: 1px solid var(--rn-line-strong); border-radius: var(--r-md); font: 400 var(--fs-sm)/1.2 var(--font-sans); }
+.stat-card { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-3); background: var(--rn-surface-2); border: 1px solid var(--rn-line); border-radius: var(--r-md); min-width: 0; }
+.stat-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rn-text-dim); }
+.stat-value { font-size: var(--fs-md); font-weight: 600; color: var(--rn-text); overflow-wrap: anywhere; }
