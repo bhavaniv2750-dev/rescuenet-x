@@ -1,5 +1,6 @@
-import { ThemeSwitch } from '../ui/ThemeSwitch';
+import { ThemeMenu } from '../ui/ThemeMenu';
 import React, { useState } from 'react';
+import { useDrawer } from '../../lib/useDrawer';
 import { Menu, Phone, Radio, Siren, X } from 'lucide-react';
 import type { AuthUser } from '../../api/types';
 import type { NavSection, Page } from '../../auth/access';
@@ -22,31 +23,32 @@ interface Props {
  *  footer with emergency numbers. Contains no operational controls. The entries come from the server's workspace. */
 export const PublicShell: React.FC<Props> = ({ sections, activePage, onNavigate, user, onSignIn, onSignOut, onReport, badges = {}, banner, children }) => {
   const [open, setOpen] = useState(false);
+  const { drawer, trigger } = useDrawer(open, () => setOpen(false));
   const pages = sections.flatMap((s) => s.pages).filter((p) => p !== 'Report Emergency');
   const go = (p: Page) => { setOpen(false); onNavigate(p); };
   return (
     <div className="pub-shell" data-shell="public">
       <a className="rn-skip" href="#main">Skip to main content</a>
+      {open && <div className="pub-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />}
       <header className="pub-header">
         <div className="pub-header-inner">
           <button className="pub-brand" onClick={() => go(pages[0])} aria-label="RescueNet X 2.0, go to the start page">
             <span className="auth-logo" aria-hidden="true"><Radio size={18} /></span>
             <span className="pub-brand-name">RescueNet <b>X 2.0</b></span>
           </button>
-          <nav className="pub-nav" aria-label="Main navigation" data-open={open}>
+          <nav className="pub-nav" id="pub-nav" aria-label="Main navigation" data-open={open} ref={drawer as React.RefObject<HTMLElement>}>
             {pages.map((p) => (
               <button key={p} className={`pub-nav-btn${activePage === p ? ' pub-nav-active' : ''}`} aria-current={activePage === p ? 'page' : undefined} onClick={() => go(p)}>
                 <span className="nav-label">{p}</span>
                 {badges[p] ? <span className="nav-badge">{badges[p]}</span> : null}
               </button>
             ))}
-            <ThemeSwitch className="theme-switch-drawer" />
           </nav>
           <div className="pub-actions">
-            <ThemeSwitch className="theme-switch-header" />
+            <ThemeMenu />
             <button className="pub-report" onClick={() => { setOpen(false); onReport(); }}><Siren size={16} aria-hidden="true" /> <span>Report emergency</span></button>
             <UserMenu user={user} onOpenAccount={() => go('My Account')} onSignOut={onSignOut} onSignIn={onSignIn} />
-            <button className="pub-menu-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? 'Close navigation' : 'Open navigation'}>
+            <button className="pub-menu-btn" ref={trigger} aria-controls="pub-nav" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? 'Close navigation' : 'Open navigation'}>
               {open ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>

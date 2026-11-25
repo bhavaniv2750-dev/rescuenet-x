@@ -14,7 +14,7 @@ export const UserMenu: React.FC<{ user: AuthUser | null; onOpenAccount: () => vo
     document.addEventListener('mousedown', close); document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
   }, [menuOpen]);
-  if (!user) return <button className="btn-primary btn-sm" onClick={onSignIn}><LogIn size={14} /> Sign in</button>;
+  if (!user) return <button className="btn-primary btn-sm user-signin" onClick={onSignIn} aria-label="Sign in"><LogIn size={14} aria-hidden="true" /> <span>Sign in</span></button>;
   const initials = user.full_name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   return (
     <div className="user-menu" ref={menuRef}>

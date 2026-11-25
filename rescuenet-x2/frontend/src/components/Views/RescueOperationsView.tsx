@@ -101,7 +101,7 @@ export const RescueOperationsView: React.FC<RescueOperationsViewProps> = ({
 
       {/* Deployment Teams Strip */}
       <div className="teams-strip">
-        <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#94a3b8' }}>
+        <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: 'var(--rn-text-dim)' }}>
           ACTIVE RESCUE SQUADS ({teams.filter((t) => t.status === 'AVAILABLE').length} AVAILABLE / {teams.length} TOTAL)
         </h4>
         <div className="teams-grid">

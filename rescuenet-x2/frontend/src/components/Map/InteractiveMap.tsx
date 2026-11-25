@@ -1,5 +1,6 @@
 import { useTheme } from '../../lib/theme';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Info, SlidersHorizontal, X } from 'lucide-react';
 import L from 'leaflet';
 import { MarkerClusterGroup } from 'leaflet.markercluster';
 import { BASEMAPS, BASEMAP_KEY, STYLE_KEY } from './basemaps';
@@ -72,7 +73,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [tileError, setTileError] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
-  const [layersOpen, setLayersOpen] = useState<boolean>(() => typeof window === 'undefined' || window.innerWidth > 760);
+  const [panel, setPanel] = useState<null | 'settings' | 'legend'>(null);   // both panels start closed: only two small icons are visible
+  const panelId = useId();
   const [selId, setSelId] = useState<string | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [q, setQ] = useState('');
@@ -116,6 +118,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; baseRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // keep Leaflet's idea of the container size in step with the layout (drawer open/close, window resize, fullscreen, panel changes)
+  useEffect(() => {
+    const el = mapContainerRef.current; const map = mapRef.current; if (!el || !map || typeof ResizeObserver === 'undefined') return;
+    let raf = 0; const ro = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => map.invalidateSize({ pan: false })); });
+    ro.observe(el); return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
 
   // ---- basemap with automatic fallback (online -> secondary online -> local offline -> unavailable)
   useEffect(() => { setStep(0); }, [chainKey]);
@@ -301,11 +310,17 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     { key: 'gauge', label: 'Gauge stations', n: gauges.length }, { key: 'alert', label: 'Alert areas', n: alerts.filter((a) => a.status !== 'RESOLVED').length },
   ];
   const kinds = new Set(facilities.map((f) => f.facility_type));
+  const sevPresent = (['CRITICAL', 'HIGH', 'MODERATE', 'LOW'] as const).filter((sv) => incidents.some((i) => (i.severity || '').toUpperCase() === sv));
+  const activeAlerts = alerts.filter((a) => a.status !== 'RESOLVED').length;
+  const sw = (inner: string) => `<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${inner}</svg>`;
+  // Only what is actually drawn right now (layer switched on AND has data), with the same symbols as the map.
   const legend: { svg: string; text: string }[] = [
-    ...(['CRITICAL', 'HIGH', 'MODERATE', 'LOW'] as const).map((s) => ({ svg: legendSvg(preset, 'incident', { severity: s }), text: `${s.toLowerCase()} incident` })),
-    ...(teams.length ? [{ svg: legendSvg(preset, 'team', { available: true }), text: 'rescue squad' }] : []),
-    ...([...kinds].map((t) => ({ svg: legendSvg(preset, kindOfFacility(t) as MarkerKind, { facilityType: t }), text: t.replace(/_/g, ' ').toLowerCase() }))),
-    ...(gauges.length ? [{ svg: legendSvg(preset, 'gauge'), text: 'river gauge station' }] : []),
+    ...(on.inc ? sevPresent.map((sv) => ({ svg: legendSvg(preset, 'incident', { severity: sv }), text: `${sv.toLowerCase()} incident` })) : []),
+    ...(on.team && teams.length ? [{ svg: legendSvg(preset, 'team', { available: true }), text: 'rescue squad' }] : []),
+    ...(on.fac ? [...kinds].map((t) => ({ svg: legendSvg(preset, kindOfFacility(t) as MarkerKind, { facilityType: t }), text: t.replace(/_/g, ' ').toLowerCase() })) : []),
+    ...(on.gauge && gauges.length ? [{ svg: legendSvg(preset, 'gauge'), text: 'river gauge station' }] : []),
+    ...(on.catch && (catchmentsGeoJSON?.features?.length || 0) > 0 ? [{ svg: sw(`<rect x="3" y="5" width="16" height="12" rx="3" fill="#22b8cf" fill-opacity="0.2" stroke="#22b8cf" stroke-width="1.5"/>`), text: 'catchment boundary (historical outline, not a flooded area)' }] : []),
+    ...(on.alert && activeAlerts > 0 ? [{ svg: sw(`<circle cx="11" cy="11" r="8" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3 3"/>`), text: 'alert area (dashed ring)' }] : []),
   ];
 
   return (
@@ -337,32 +352,46 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         <button type="button" onClick={toggleFullscreen} aria-label={fullscreen ? 'Exit full screen' : 'Full screen'} aria-pressed={fullscreen} title="Full screen">{fullscreen ? '⤡' : '⤢'}</button>
       </div>
 
-      <details className="map-layers" open={layersOpen} onToggle={(e) => setLayersOpen((e.currentTarget as HTMLDetailsElement).open)}>
-        <summary>Style and layers</summary>
-        <div className="map-layers-body" role="group" aria-label="Map style and layers">
-          <label className="map-select">Map style
-            <select value={preset} onChange={(e) => choosePreset(e.target.value as PresetId)} disabled={Boolean(forcePreset)}>{PRESET_ORDER.map((id) => <option key={id} value={id}>{PRESETS[id].label}</option>)}</select>
-          </label>
-          <p className="map-blurb">{P.blurb}</p>
-          <label className="map-select">Base map
-            <select value={baseChoice} onChange={(e) => chooseBase(e.target.value as BaseChoice)}>
-              <option value="auto">Automatic (online, then offline)</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label} (online)</option>)}{regional && <option value="regional">{regional.isFixture ? 'Regional offline map (TEST FIXTURE)' : 'Regional offline map (vector archive)'}</option>}<option value="local">Local offline map (basic)</option>
-            </select>
-          </label>
-          {baseChoice === 'auto' && <label className="map-select">Map appearance<select value={mapPref} onChange={(e) => setMapAppearance(e.target.value as 'follow' | 'light' | 'dark')}><option value="follow">Follow app theme</option><option value="light">Light</option><option value="dark">Dark</option></select></label>}
-          {toggles.filter((t) => t.n > 0 || t.key === 'inc').map((t) => (
-            <label key={t.key} className="map-toggle"><input type="checkbox" checked={on[t.key]} onChange={(e) => setOn({ ...on, [t.key]: e.target.checked })} /><span>{t.label}</span><span className="map-count">{t.n}</span></label>
-          ))}
-        </div>
-      </details>
+      <div className="map-tools" role="group" aria-label="Map tools">
+        <button type="button" className={panel === 'settings' ? 'on' : ''} aria-expanded={panel === 'settings'} aria-controls={`${panelId}-s`} aria-label="Map settings" title="Map settings" onClick={() => setPanel(panel === 'settings' ? null : 'settings')}><SlidersHorizontal size={17} aria-hidden="true" /></button>
+        <button type="button" className={panel === 'legend' ? 'on' : ''} aria-expanded={panel === 'legend'} aria-controls={`${panelId}-l`} aria-label="Legend" title="Legend" onClick={() => setPanel(panel === 'legend' ? null : 'legend')}><Info size={17} aria-hidden="true" /></button>
+      </div>
 
-      <details className="map-legend-box">
-        <summary>Legend</summary>
-        <ul>
-          {legend.map((l) => <li key={l.text}><span className="lg-svg" dangerouslySetInnerHTML={{ __html: l.svg }} /> {l.text}</li>)}
-          <li className="lg-note">Numbered circles group nearby markers. Seeded records are simulated. Catchments are historical boundaries, not flooded areas; gauges show thresholds only.</li>
-        </ul>
-      </details>
+      {panel === 'settings' && (
+        <section className="map-pop" id={`${panelId}-s`} role="dialog" aria-label="Map settings" onKeyDown={(e) => { if (e.key === 'Escape') setPanel(null); }}>
+          <header><strong>Map settings</strong><button type="button" onClick={() => setPanel(null)} aria-label="Close map settings"><X size={16} aria-hidden="true" /></button></header>
+          <div className="map-pop-body">
+            <label className="map-select">Visual preset
+              <select value={preset} onChange={(e) => choosePreset(e.target.value as PresetId)} disabled={Boolean(forcePreset)}>{PRESET_ORDER.map((id) => <option key={id} value={id}>{PRESETS[id].label}</option>)}</select>
+            </label>
+            <p className="map-blurb">{P.blurb}</p>
+            <label className="map-select">Map appearance
+              <select value={mapPref} onChange={(e) => setMapAppearance(e.target.value as 'follow' | 'light' | 'dark')}><option value="follow">Follow application theme</option><option value="light">Always light</option><option value="dark">Always dark</option></select>
+            </label>
+            <label className="map-select">Basemap source
+              <select value={baseChoice} onChange={(e) => chooseBase(e.target.value as BaseChoice)}>
+                <option value="auto">Automatic (online, then offline)</option>{(Object.keys(BASEMAPS) as BasemapId[]).map((id) => <option key={id} value={id}>{BASEMAPS[id].label} (online)</option>)}{regional && <option value="regional">{regional.isFixture ? 'Regional offline map (TEST FIXTURE)' : 'Regional offline map (vector archive)'}</option>}<option value="local">Local offline map (basic)</option>
+              </select>
+            </label>
+            <fieldset className="map-layer-list"><legend>Operational layers</legend>
+              {toggles.filter((t) => t.n > 0 || t.key === 'inc').map((t) => (
+                <label key={t.key} className="map-toggle"><input type="checkbox" checked={on[t.key]} onChange={(e) => setOn({ ...on, [t.key]: e.target.checked })} /><span>{t.label}</span><span className="map-count">{t.n}</span></label>
+              ))}
+            </fieldset>
+          </div>
+        </section>
+      )}
+
+      {panel === 'legend' && (
+        <section className="map-pop map-pop-legend" id={`${panelId}-l`} role="dialog" aria-label="Map legend" onKeyDown={(e) => { if (e.key === 'Escape') setPanel(null); }}>
+          <header><strong>Legend</strong><button type="button" onClick={() => setPanel(null)} aria-label="Close legend"><X size={16} aria-hidden="true" /></button></header>
+          <ul className="map-pop-body">
+            {legend.length === 0 && <li className="lg-note">No operational layer is currently drawn.</li>}
+            {legend.map((l) => <li key={l.text}><span className="lg-svg" dangerouslySetInnerHTML={{ __html: l.svg }} /> <span>{l.text}</span></li>)}
+            <li className="lg-note">Numbered circles group nearby markers. Records are simulated demonstration data. Catchments are historical boundaries, not flood inundation.</li>
+          </ul>
+        </section>
+      )}
 
       {info && cardMode && (
         <aside className="rn-info-card" aria-label="Selected item">

@@ -47,7 +47,7 @@ PBF: 534.46 MB (given). The persistent budget target is about 3 GB including the
 | Memory | Java heap 3 GB (`-Xmx3g`), total process about 3 to 4 GB; mmap pages are reclaimable cache | heap guidance **[doc]**; process total **[to measure]** |
 | CPU | 4 threads of 12, BelowNormal priority; no GPU | design choice |
 
-The `Check` step stops and asks for `-Approve` if free space is below the peak estimate. The `Benchmark` step builds Bengaluru only from the same file and prints elapsed time and **measured** peak memory: use it before the full build, and report its numbers back rather than trusting the estimates above.
+The `Check` step warns if free space is below the peak estimate, and `Build` is never run without your explicit `-Approve` after you have read the benchmark numbers (the 8 to 11 GB estimate is **not** pre-approved). The `Benchmark` step builds Bengaluru only from the same file and prints elapsed time and **measured** peak memory: use it before the full build, and report its numbers back rather than trusting the estimates above.
 
 ## 4. Coverage and features
 The Protomaps basemap schema is designed to contain: earth, water (lakes, reservoirs, rivers), landuse/landcover (parks, forests, hospital/school/college areas, airports), roads (highway, major, medium, minor, service/other, paths, rail), buildings (high zoom only), places (cities, towns, suburbs, neighbourhoods, villages), pois (hospitals, schools, colleges, stations, airports, landmarks) and boundaries (national, state, district). **[doc]** Which of these actually exist in your archive, and the true geographical extent, are **[to measure]**: `-Step Validate` prints the PBF bounding box and `-Step Verify` prints the archive bounds and layer list. Geofabrik's "Southern Zone" is expected to cover the southern Indian states and union territories, but the extent is whatever the PBF header says.
@@ -89,7 +89,7 @@ $Pbf = 'C:\Users\Bhavana\OneDrive\Documents\Flood degi twin rescuenet X\datasets
 .\regional-gis.ps1 -Step Setup     -Pbf $Pbf    # portable JDK + Maven + profile jar + Python venv, all under C:\RescueNetGIS
 .\regional-gis.ps1 -Step Validate  -Pbf $Pbf    # size, OSMHeader, SHA-256, Geofabrik MD5 (if reachable), bounding box
 .\regional-gis.ps1 -Step Benchmark -Pbf $Pbf    # Bengaluru only: measured time and peak memory
-.\regional-gis.ps1 -Step Build     -Pbf $Pbf    # full South India archive -> C:\RescueNetGIS\out\south-india.pmtiles
+.\regional-gis.ps1 -Step Build     -Pbf $Pbf -Approve   # full archive; REFUSES without a prior Benchmark and an explicit -Approve (you accept the resource budget after reading the benchmark)
 .\regional-gis.ps1 -Step Verify    -Pbf $Pbf    # header, bounds, layers, one real tile
 .\regional-gis.ps1 -Step Search    -Pbf $Pbf    # compact place index -> C:\RescueNetGIS\out\search
 .\regional-gis.ps1 -Step Clean     -Pbf $Pbf    # only after Verify passes; the PBF is never touched (add -Tools to drop the JDK/Maven too)
@@ -121,7 +121,7 @@ Without Windows, check any archive: `node scripts\pmtiles_inspect.mjs C:\RescueN
 | Fixture content | Built from the already bundled Natural Earth + BBMP data: no OpenStreetMap data, no residential streets, no buildings. Marked "TEST FIXTURE" in the metadata and the on-map chip |
 | Search index builder and OSM layer scripts | **[cloud]** on tiny synthetic OSM XML only |
 | PowerShell script | Written, **never executed** (no Windows/PowerShell in the cloud). Run `Check` first |
-| Planetiler/Protomaps flags (`--storage`, `--nodemap-storage`, `--bounds`, `--tmpdir`, `--threads`) | Written from memory of the tool's CLI; `Build` checks `--help` and drops options a build does not list |
+| Planetiler/Protomaps flags (`--storage`, `--nodemap-storage`, `--bounds`, `--tmpdir`, `--threads`) | Written from memory of the tool's CLI; `Benchmark`/`Build` check `--help-all` and **stop with the missing option named** if one is not listed (nothing is silently dropped) |
 | South India extent, feature richness, archive size, build time, peak memory | **[to measure]** on your laptop |
 | Real archive rendering in the four presets | **Not verified.** Do not claim full South India rendering until `Verify` and the preset checks above pass |
 

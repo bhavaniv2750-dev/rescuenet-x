@@ -1,0 +1,5 @@
+# UI regression evidence (captured after the fixes in docs/frontend/UI_REGRESSION.md)
+
+All 19 screenshots are real Chromium captures of the running app (Vite dev server + demo backend, fresh database), taken after the layout fixes; none is cropped or composited. Tile hosts were blocked, so every map shows the **basic local map** (Natural Earth + BBMP wards, labelled on screen). No regional PMTiles archive and no test fixture are loaded in these shots, so they say nothing about South India street-level coverage. Console data are simulated demonstration records (see the on-page notices).
+
+01/02 sign-in (light/dark) at `/`; 03 Flood Digital Twin settings collapsed; 04 settings expanded; 05 legend expanded; 06/07 Overview light/dark; 08/09 Rescue Operations light/dark; 10/11 Forecasting light/dark (after computing a scenario); 12 theme dropdown; 13 light app + dark Tactical map; 14 dark app + light Navigation map; 15 mobile GIS, navigation closed; 16 mobile GIS, navigation open; 17 mobile theme dropdown; 18 mobile Overview; **19 genuine 404, an error-state test** (`/public/this-page-does-not-exist`).

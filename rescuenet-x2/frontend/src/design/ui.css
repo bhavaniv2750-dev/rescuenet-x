@@ -9,9 +9,9 @@
 .rn-btn:hover:not(:disabled) { background: var(--rn-surface-3); }
 .rn-btn-sm { min-height: var(--h-control-sm); padding: 0 var(--sp-3); font-size: var(--fs-xs); }
 .rn-btn-primary { background: var(--rn-accent); border-color: var(--rn-accent); color: var(--rn-on-accent); }
-.rn-btn-primary:hover:not(:disabled) { background: #4ccbdf; }
-.rn-btn-danger { background: var(--rn-danger-bg); border-color: var(--rn-danger); color: #fecaca; }
-.rn-btn-danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.22); }
+.rn-btn-primary:hover:not(:disabled) { background: var(--rn-accent-hover); }
+.rn-btn-danger { background: var(--rn-danger-bg); border-color: var(--rn-danger); color: var(--rn-on-danger); }
+.rn-btn-danger:hover:not(:disabled) { background: var(--rn-danger-hover); }
 .rn-btn-ghost { background: transparent; border-color: transparent; }
 .rn-btn-block { width: 100%; }
 .rn-btn:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
@@ -31,7 +31,7 @@ textarea.rn-input { padding: var(--sp-3); min-height: 96px; line-height: var(--l
 .rn-input[aria-invalid='true'] { border-color: var(--rn-danger); }
 .rn-input:disabled { opacity: var(--disabled-opacity); }
 .rn-field-hint { font-size: var(--fs-xs); color: var(--rn-text-dim); }
-.rn-field-error { font-size: var(--fs-xs); color: #fecaca; }
+.rn-field-error { font-size: var(--fs-xs); color: var(--rn-on-danger); }
 .rn-search { position: relative; display: flex; align-items: center; min-width: 0; }
 .rn-search svg { position: absolute; left: 12px; color: var(--rn-text-dim); pointer-events: none; }
 .rn-search .rn-input { padding-left: 36px; }

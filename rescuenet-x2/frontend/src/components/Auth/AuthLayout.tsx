@@ -1,9 +1,11 @@
 import { Radio } from 'lucide-react';
+import { ThemeMenu } from '../ui/ThemeMenu';
 
 /** One layout for every authentication screen. Left (desktop): product mark only. Right: the form. Mobile: compact single column.
  *  The brand side intentionally carries no institution names, statistics, feature lists, credentials or affiliation claims. */
 export const AuthLayout: React.FC<{ children: React.ReactNode; wide?: boolean; label?: string }> = ({ children, wide, label }) => (
   <div className="auth-shell" data-shell="auth">
+    <div className="auth-theme"><ThemeMenu /></div>
     <aside className="auth-brand" aria-hidden="false">
       <svg className="auth-contours" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
         {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (

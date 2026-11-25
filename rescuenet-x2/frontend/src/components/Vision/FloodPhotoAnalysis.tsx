@@ -2,9 +2,9 @@ import React from 'react';
 import type { VisionAnalysis } from '../../api/types';
 
 const sevColour: Record<string, string> = {
-  CRITICAL: '#ef4444',
+  CRITICAL: 'var(--sev-critical)',
   HIGH: '#f97316',
-  MODERATE: '#f59e0b',
+  MODERATE: 'var(--sev-high)',
   LOW: '#10b981',
 };
 
@@ -18,9 +18,9 @@ export const FloodPhotoAnalysis: React.FC<{ result: Partial<VisionAnalysis>; com
     </div>
   );
   return (
-    <div style={{ padding: '10px', background: '#030712', border: '1px solid var(--border-subtle, #1e293b)', borderRadius: '6px' }}>
+    <div style={{ padding: '10px', background: 'var(--rn-slate-1, #030712)', border: '1px solid var(--border-subtle, #1e293b)', borderRadius: '6px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <strong style={{ fontSize: '13px', color: result.flood_detected ? '#38bdf8' : '#94a3b8' }}>
+        <strong style={{ fontSize: '13px', color: result.flood_detected ? 'var(--rn-accent)' : 'var(--rn-text-dim)' }}>
           {result.flood_detected ? 'Flood detected' : 'No flood detected'} ({(p * 100).toFixed(0)}%)
         </strong>
         <span className="status-pill" style={{ fontSize: '10px' }}>{result.data_label || 'PREDICTED'}</span>

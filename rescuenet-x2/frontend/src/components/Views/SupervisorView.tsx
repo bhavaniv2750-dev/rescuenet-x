@@ -223,14 +223,14 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
                   background: 'rgba(6, 182, 212, 0.08)',
                   border: '1px solid #06b6d4',
                   borderRadius: '6px',
-                  color: '#67e8f9',
+                  color: 'var(--rn-info)',
                   fontSize: '13px',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
                   <RefreshCw className="animate-spin" size={16} /> Running Ollama Inference
                 </div>
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#a5f3fc' }}>
+                <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--rn-text-soft)' }}>
                   Sending incident location, nearest available teams and the nearest IndoFloods river gauge to the local Qwen 4B model...
                 </div>
               </div>
@@ -244,7 +244,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
                   background: 'rgba(239, 68, 68, 0.1)',
                   border: '1px solid #ef4444',
                   borderRadius: '6px',
-                  color: '#f87171',
+                  color: 'var(--rn-danger)',
                   fontSize: '13px',
                 }}
               >
@@ -265,7 +265,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
                   background: 'rgba(239, 68, 68, 0.1)',
                   border: '1px solid #ef4444',
                   borderRadius: '6px',
-                  color: '#f87171',
+                  color: 'var(--rn-danger)',
                   fontSize: '13px',
                 }}
               >
@@ -284,7 +284,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
                   background: 'rgba(245, 158, 11, 0.1)',
                   border: '1px solid #f59e0b',
                   borderRadius: '6px',
-                  color: '#fbbf24',
+                  color: 'var(--rn-warn)',
                   fontSize: '13px',
                 }}
               >
@@ -305,7 +305,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({ incidents, canAp
                   background: 'rgba(16, 185, 129, 0.1)',
                   border: '1px solid #10b981',
                   borderRadius: '6px',
-                  color: '#34d399',
+                  color: 'var(--rn-ok)',
                   fontSize: '13px',
                 }}
               >

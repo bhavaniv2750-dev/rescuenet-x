@@ -291,10 +291,10 @@ export const DatasetsView: React.FC = () => {
                   )}
                   {m.validation_note && (
                     <div className="model-meta-row" style={{ display: 'block', paddingTop: '4px', borderTop: '1px dashed var(--border-color, #334155)' }}>
-                      <span className="badge" style={{ fontSize: '10px', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '2px 6px', borderRadius: '4px' }}>
+                      <span className="badge" style={{ fontSize: '10px', background: 'rgba(56, 189, 248, 0.1)', color: 'var(--rn-info)', padding: '2px 6px', borderRadius: '4px' }}>
                         Curated Benchmark (Deterministic Water-Level Threshold: &gt;4.21m)
                       </span>
-                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#94a3b8' }}>{m.validation_note}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--rn-text-dim)' }}>{m.validation_note}</p>
                     </div>
                   )}
                 </>
@@ -730,7 +730,7 @@ export const DatasetsView: React.FC = () => {
                         <span style={{ fontSize: '11px', color: 'var(--accent-amber)', fontWeight: 600 }}>
                           Duplicate File Notice:
                         </span>
-                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#e2e8f0' }}>
+                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--rn-text)' }}>
                           This file has an identical MD5 hash to <code>{inspectionData.duplicate_of}</code>.
                         </p>
                       </div>
@@ -772,12 +772,12 @@ export const DatasetsView: React.FC = () => {
 
                       {/* Preprocessing Output */}
                       {preprocessingData && (
-                        <div style={{ marginTop: '10px', padding: '8px', background: '#030712', border: '1px solid var(--border-subtle)', borderRadius: '4px' }}>
+                        <div style={{ marginTop: '10px', padding: '8px', background: 'var(--rn-slate-1, #030712)', border: '1px solid var(--border-subtle)', borderRadius: '4px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
                             <CheckCircle2 size={13} className="text-emerald" />
                             <strong style={{ fontSize: '11px', color: 'var(--accent-emerald)' }}>Preprocessing Validated</strong>
                           </div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8', lineHeight: '1.5' }}>
+                          <div style={{ fontSize: '10px', color: 'var(--rn-text-dim)', lineHeight: '1.5' }}>
                             <div>Target Tensor: <code>{JSON.stringify(preprocessingData.target_tensor_shape)}</code></div>
                             <div>Scale Factor: <code>{preprocessingData.scaling.scale_factor}</code> (Resized: {preprocessingData.scaling.resized_shape[1]}x{preprocessingData.scaling.resized_shape[0]} px)</div>
                             <div>Letterbox Padding: Top/Bottom: {preprocessingData.scaling.letterbox_padding.top}px, Left/Right: {preprocessingData.scaling.letterbox_padding.left}px</div>

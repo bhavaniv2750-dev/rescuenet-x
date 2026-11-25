@@ -3,7 +3,6 @@ import { RefreshCw } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Capabilities } from '../../api/types';
 import { useTheme } from '../../lib/theme';
-import { ThemeSwitch } from '../ui/ThemeSwitch';
 import { Button, PageHeader, Panel, ProvenanceBadge, StatusBadge } from '../ui';
 
 interface Props { backendStatus?: string; onRefresh?: () => void }  // onRefresh kept for the shell's call signature
@@ -28,7 +27,7 @@ export const SettingsView: React.FC<Props> = ({ backendStatus }) => {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const { map: mapPref, setMapAppearance } = useTheme();
+  const { app: appPref, setAppTheme, map: mapPref, setMapAppearance } = useTheme();
   const email = caps?.email_delivery;
   return (
     <div className="settings-page">
@@ -58,7 +57,11 @@ export const SettingsView: React.FC<Props> = ({ backendStatus }) => {
         </Panel>
         <Panel title="Appearance">
           <p className="rn-field-hint">The application theme and the map appearance are independent. System follows your operating system setting.</p>
-          <div className="rn-field-row"><span>Application theme</span> <ThemeSwitch /></div>
+          <label className="map-select">Application theme
+            <select value={appPref} onChange={(e) => setAppTheme(e.target.value as 'system' | 'light' | 'dark')}>
+              <option value="light">Light</option><option value="dark">Dark</option><option value="system">System default</option>
+            </select>
+          </label>
           <label className="map-select" style={{ marginTop: 12 }}>Map appearance
             <select value={mapPref} onChange={(e) => setMapAppearance(e.target.value as 'follow' | 'light' | 'dark')}>
               <option value="follow">Follow application theme</option><option value="light">Always light</option><option value="dark">Always dark</option>

@@ -448,7 +448,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                 border: '1px dashed #334155',
                 borderRadius: '8px',
                 padding: '16px',
-                background: 'rgba(15, 23, 42, 0.6)',
+                background: 'var(--rn-slate-1, rgba(15, 23, 42, 0.6))',
                 marginBottom: '16px',
               }}
             >
@@ -480,7 +480,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                       cursor: 'pointer',
                       border: '1px solid #1e293b',
                       borderRadius: '6px',
-                      background: 'rgba(30, 41, 59, 0.4)',
+                      background: 'var(--rn-slate-2, rgba(30, 41, 59, 0.4))',
                     }}
                   >
                     <Upload size={24} className="text-muted" style={{ marginBottom: '8px' }} />
@@ -531,7 +531,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                   <button
                     type="button"
                     className="btn-secondary"
-                    style={{ color: '#ef4444', borderColor: '#ef4444' }}
+                    style={{ color: 'var(--sev-critical)', borderColor: 'var(--sev-critical)' }}
                     onClick={handleRemoveImage}
                   >
                     <Trash2 size={14} /> Remove
@@ -569,7 +569,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
           <div className="panel incident-dir-list">
             <div style={{ marginBottom: '12px' }}>
               <div style={{ position: 'relative', marginBottom: '8px' }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: '#64748b' }} />
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--rn-text-dim)' }} />
                 <input
                   type="text"
                   placeholder="Search incidents by ID, title, or area..."
@@ -615,14 +615,14 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                       style={{
                         padding: '12px',
                         borderRadius: '6px',
-                        background: isSelected ? 'rgba(8, 145, 178, 0.15)' : 'rgba(15, 23, 42, 0.6)',
+                        background: isSelected ? 'rgba(8, 145, 178, 0.15)' : 'var(--rn-slate-1, rgba(15, 23, 42, 0.6))',
                         border: isSelected ? '1px solid #0891b2' : '1px solid rgba(255, 255, 255, 0.05)',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease',
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span className="font-mono font-bold text-xs" style={{ color: '#38bdf8' }}>
+                        <span className="font-mono font-bold text-xs" style={{ color: 'var(--rn-accent)' }}>
                           {inc.id}
                         </span>
                         <span
@@ -633,20 +633,20 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         </span>
                       </div>
 
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--rn-text)', marginBottom: '4px' }}>
                         {inc.title}
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--rn-text-dim)' }}>
                         <span>📍 {inc.area}</span>
-                        <span style={{ color: inc.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b' }}>
+                        <span style={{ color: inc.severity === 'CRITICAL' ? 'var(--sev-critical)' : 'var(--sev-high)' }}>
                           {inc.severity}
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center', fontSize: '10px', color: '#64748b' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center', fontSize: '10px', color: 'var(--rn-text-dim)' }}>
                         <span>{isCitizen ? '👤 Citizen Report' : '📡 MESH Telemetry'}</span>
-                        {inc.image_url && <span style={{ color: '#06b6d4' }}>📷 Photo Attached</span>}
+                        {inc.image_url && <span style={{ color: 'var(--rn-accent)' }}>📷 Photo Attached</span>}
                       </div>
                     </div>
                   );
@@ -675,13 +675,13 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                         className="status-pill"
                         style={{
                           background: selectedIncident.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                          color: selectedIncident.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b',
+                          color: selectedIncident.severity === 'CRITICAL' ? 'var(--sev-critical)' : 'var(--sev-high)',
                         }}
                       >
                         {selectedIncident.severity}
                       </span>
                     </div>
-                    <h3 style={{ margin: 0, fontSize: '18px', color: '#f8fafc' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--rn-text)' }}>
                       {selectedIncident.title}
                     </h3>
                   </div>
@@ -717,7 +717,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
                   <div className="stat-card">
                     <span className="stat-label">People Requiring Rescue</span>
-                    <span className="stat-value" style={{ fontSize: '16px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="stat-value" style={{ fontSize: '16px', color: 'var(--sev-critical)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Users size={16} /> {selectedIncident.people_affected} Civilians
                     </span>
                     <span className="text-xs text-muted" style={{ marginTop: '4px' }}>
@@ -751,12 +751,12 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
                 {/* Description */}
                 <div style={{ marginBottom: '20px' }}>
-                  <h4 style={{ fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  <h4 style={{ fontSize: '13px', color: 'var(--rn-text-dim)', textTransform: 'uppercase', marginBottom: '8px' }}>
                     Field Situation Report
                   </h4>
                   <div
                     style={{
-                      background: 'rgba(15, 23, 42, 0.7)',
+                      background: 'var(--rn-slate-1, rgba(15, 23, 42, 0.7))',
                       padding: '14px',
                       borderRadius: '6px',
                       fontSize: '13px',
@@ -771,7 +771,7 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
 
                 {/* Attached Photographic Evidence */}
                 <div>
-                  <h4 style={{ fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <h4 style={{ fontSize: '13px', color: 'var(--rn-text-dim)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <ImageIcon size={14} /> Photographic Field Evidence
                   </h4>
                   {selectedIncident.image_url ? (
@@ -812,10 +812,10 @@ export const IncidentReportView: React.FC<IncidentReportViewProps> = ({ onSucces
                       style={{
                         padding: '24px',
                         borderRadius: '6px',
-                        background: 'rgba(15, 23, 42, 0.4)',
+                        background: 'var(--rn-slate-1, rgba(15, 23, 42, 0.4))',
                         border: '1px dashed #334155',
                         textAlign: 'center',
-                        color: '#64748b',
+                        color: 'var(--rn-text-dim)',
                         fontSize: '13px',
                       }}
                     >

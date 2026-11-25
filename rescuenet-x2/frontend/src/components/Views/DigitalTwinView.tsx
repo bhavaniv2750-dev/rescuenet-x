@@ -32,12 +32,24 @@ export const DigitalTwinView: React.FC<DigitalTwinViewProps> = ({
   return (
     <div className="digital-twin-container">
       <PageHeader title="Flood digital twin"
-        description="A map of river catchments, gauge stations and operational assets. It is a GIS visualisation: it does not simulate hydrology and does not show live water levels."
+        description="Geospatial flood intelligence and emergency response monitoring."
         meta={<>
-          <ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">catchment polygons and gauge thresholds (IndoFloods)</span>
-          {incidents.length > 0 && <><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">incident and team pins are seeded demonstration records</span></>}
+          <ProvenanceBadge kind="HISTORICAL" /><span className="rn-field-hint">catchment boundaries</span>
+          <ProvenanceBadge kind="UNAVAILABLE" /><span className="rn-field-hint">live water levels</span>
+          {incidents.length > 0 && <><ProvenanceBadge kind="SIMULATED" /><span className="rn-field-hint">operational records</span></>}
         </>}
         actions={<><StatusBadge tone="info">{catchmentsGeoJSON?.features?.length ?? 0} catchments</StatusBadge><StatusBadge tone="info">{gauges.length} gauges</StatusBadge><StatusBadge tone="info">{incidents.length} incident pins</StatusBadge></>} />
+
+      <details className="rn-about-data">
+        <summary>About this data</summary>
+        <ul>
+          <li><strong>Catchment boundaries</strong> are historical outlines from the IndoFloods dataset. They show where water drains to, not where flooding is happening.</li>
+          <li><strong>River gauges</strong> are listed with their warning and danger reference levels. No live water-level feed is connected, so current readings are unavailable.</li>
+          <li><strong>Incidents, squads and shelters</strong> shown here are simulated demonstration records unless a record is marked as observed. They are not real emergencies.</li>
+          <li><strong>No hydrological simulation:</strong> this page does not model water movement or inundation, and it has not been validated as a hydrodynamic model.</li>
+          <li><strong>Base map:</strong> online map tiles when reachable; otherwise locally stored geography (Natural Earth and BBMP ward boundaries, or a regional archive if one is installed). Local coverage is limited to what those datasets contain, and map coverage does not imply operational or forecasting coverage.</li>
+        </ul>
+      </details>
 
       <div className="twin-layout-grid">
         <InteractiveMap incidents={incidents} teams={teams} facilities={facilities} gauges={filteredGauges} catchmentsGeoJSON={catchmentsGeoJSON} alerts={alerts}

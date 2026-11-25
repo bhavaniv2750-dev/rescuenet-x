@@ -2,7 +2,7 @@ import React from 'react';
 import { Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Siren } from 'lucide-react';
 import type { AuthUser } from '../../api/types';
 import { UserMenu } from './UserMenu';
-import { ThemeSwitch } from '../ui/ThemeSwitch';
+import { ThemeMenu } from '../ui/ThemeMenu';
 
 interface TopbarProps {
   activePage: string;
@@ -60,7 +60,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         )}
 
-        <ThemeSwitch className="hide-xs" />
+        <ThemeMenu />
 
         <UserMenu user={user} onOpenAccount={onOpenAccount} onSignOut={onSignOut} onSignIn={onSignIn} />
       </div>

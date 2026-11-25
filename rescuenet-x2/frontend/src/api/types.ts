@@ -153,6 +153,7 @@ export interface FloodPredictionResult {
   data_source: string;
   evaluation_metrics: {
     model_architecture: string;
+    evaluation_version?: number;
     training_samples: number;
     test_samples: number;
     accuracy: number;

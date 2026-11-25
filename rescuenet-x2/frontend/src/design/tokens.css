@@ -17,9 +17,11 @@
 
   /* ---- accent (one teal) and interaction */
   --rn-accent: #22b8cf;
-  --rn-accent-strong: #0e90a8;
+  --rn-accent-strong: #0c8197;   /* white text on this is 4.6:1 (was 3.8:1) */
   --rn-accent-soft: rgba(34, 184, 207, 0.14);
   --rn-on-accent: #04202a;
+  --rn-notice-error: #fecaca; --rn-notice-info: #d6efff; --rn-notice-ok: #c6f6df; --rn-notice-warn: #fdecb2;
+  --rn-accent-hover: #4ccbdf; --rn-on-danger: #fecaca; --rn-danger-hover: rgba(248, 113, 113, 0.22);
   --rn-focus: #7dd3fc;
 
   /* ---- semantic states */
@@ -78,18 +80,21 @@
   --rn-line: #d3dbe8; --rn-line-strong: #9fb0c8;
   --rn-text: #0e1828; --rn-text-soft: #2f4059; --rn-text-dim: #50627c;
   --rn-accent: #0e7490; --rn-accent-strong: #0b5c74; --rn-accent-soft: rgba(14, 116, 144, 0.1); --rn-on-accent: #ffffff; --rn-focus: #0369a1;
-  --rn-ok: #047857; --rn-ok-bg: rgba(4, 120, 87, 0.1);
+  --rn-notice-error: #8f1d1d; --rn-notice-info: #07456b; --rn-notice-ok: #045a40; --rn-notice-warn: #6b3d04;
+  --rn-accent-hover: #0b5c74; --rn-on-danger: #b42323; --rn-danger-hover: rgba(180, 35, 35, 0.16);
+  --rn-ok: #046c4e; --rn-ok-bg: rgba(4, 120, 87, 0.1);
   --rn-warn: #a35a06; --rn-warn-bg: rgba(163, 90, 6, 0.11);
   --rn-danger: #b42323; --rn-danger-bg: rgba(180, 35, 35, 0.09);
   --rn-info: #0369a1; --rn-info-bg: rgba(3, 105, 161, 0.09);
   --sev-critical: #c62828; --sev-critical-bg: rgba(198, 40, 40, 0.1);
-  --sev-high: #b45309; --sev-high-bg: rgba(180, 83, 9, 0.11);
-  --sev-moderate: #8a6d00; --sev-moderate-bg: rgba(138, 109, 0, 0.12);
+  --sev-high: #a34a08; --sev-high-bg: rgba(163, 74, 8, 0.11);
+  --sev-moderate: #7a5f00; --sev-moderate-bg: rgba(138, 109, 0, 0.12);
   --sev-low: #1d5fa8; --sev-low-bg: rgba(29, 95, 168, 0.1);
   --prov-simulated: #6d3fc0; --prov-historical: #50627c; --prov-observed: #047857;
   --prov-live: #0e7490; --prov-stale: #a35a06; --prov-unavailable: #b42323;
   --shadow-1: 0 1px 2px rgba(15, 30, 55, 0.14); --shadow-2: 0 8px 24px rgba(15, 30, 55, 0.18);
   --rn-deep: #ffffff;
+  --rn-slate-1: var(--rn-surface-2); --rn-slate-2: var(--rn-surface-3);
   --rn-ov-1: rgba(15, 30, 55, 0.1);
   --rn-ov-015: rgba(15, 30, 55, 0.015);
   --rn-ov-02: rgba(15, 30, 55, 0.02);

@@ -18,7 +18,7 @@ param(
   [int]$HeapGB = 3,          # Java heap. Planetiler's guidance is about 0.5x the PBF size (about 0.3 GB here); 3 GB leaves headroom and stays inside the 2-4 GB target.
   [int]$Threads = 4,         # of 12 logical CPUs on an i5-13420H: keeps the laptop responsive.
   [int]$JdkVersion = 25,     # newest LTS: satisfies "Java 21+" (Protomaps profile) and "Java 25+" (current Planetiler README). Lower it if your checkout's pom says otherwise.
-  [switch]$Approve,          # required when free disk is below the estimated peak
+  [switch]$Approve,          # required for -Step Build (explicit approval of the resource budget after reviewing the Benchmark)
   [switch]$Tools             # with -Step Clean: also remove the downloaded JDK/Maven/profile build (re-downloadable)
 )
 $ErrorActionPreference = 'Stop'
@@ -34,6 +34,11 @@ function Need-Tool($path, $what) { if (-not (Test-Path $path)) { throw "$what no
 function Free-GB($path) { $root = (Get-Item $path -ErrorAction SilentlyContinue); $drive = if ($path -match '^([A-Za-z]):') { $Matches[1] } else { 'C' }; [math]::Round((Get-PSDrive $drive).Free / 1GB, 1) }
 function Use-Jdk { $env:JAVA_HOME = $jdkHome; $env:PATH = "$jdkHome\bin;$mvnHome\bin;$env:PATH" }
 function Profile-Jar { Get-ChildItem (Join-Path $profile 'tiles\target') -Filter '*with-deps.jar' -ErrorAction SilentlyContinue | Select-Object -First 1 }
+function Assert-Flags($helpText, [string[]]$required, $what) {
+  # Fail clearly if the installed Planetiler/profile does not list an option we depend on (never silently drop a required option).
+  $missing = @(); foreach ($r in $required) { if ($helpText -notmatch [regex]::Escape($r)) { $missing += $r } }
+  if ($missing.Count -gt 0) { throw ("$what: this build does not list required option(s): " + ($missing -join ', ') + ". Compare with: java -jar <profile jar> --help-all . Update the script (or the profile checkout) before continuing; nothing was run.") }
+}
 function Py { Join-Path $venv 'Scripts\python.exe' }
 
 function Run-Measured($exe, $argList, $logName) {
@@ -41,10 +46,14 @@ function Run-Measured($exe, $argList, $logName) {
   $log = Join-Path $Work $logName
   $p = Start-Process -FilePath $exe -ArgumentList $argList -WorkingDirectory $dirSrc -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
   try { $p.PriorityClass = 'BelowNormal' } catch { }
-  $sw = [Diagnostics.Stopwatch]::StartNew(); $peak = 0
-  while (-not $p.HasExited) { try { $p.Refresh(); if ($p.PeakWorkingSet64 -gt $peak) { $peak = $p.PeakWorkingSet64 } } catch { }; Start-Sleep -Seconds 2 }
+  $sw = [Diagnostics.Stopwatch]::StartNew(); $peak = 0; $tmpPeak = 0; $i = 0
+  while (-not $p.HasExited) {
+    try { $p.Refresh(); if ($p.PeakWorkingSet64 -gt $peak) { $peak = $p.PeakWorkingSet64 } } catch { }
+    $i++; if (($i % 5) -eq 0) { $t = (Get-ChildItem $dirTmp -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum; if ($t -gt $tmpPeak) { $tmpPeak = $t } }
+    Start-Sleep -Seconds 2
+  }
   $sw.Stop()
-  Say ("exit code {0}; elapsed {1:N1} min; PEAK working set {2:N2} GB (Java process); logs: {3}" -f $p.ExitCode, $sw.Elapsed.TotalMinutes, ($peak / 1GB), $log)
+  Say ("exit code {0}; elapsed {1:N1} min; PEAK working set {2:N2} GB (Java process); PEAK temp folder {3:N2} GB (sampled every 10 s); logs: {4}" -f $p.ExitCode, $sw.Elapsed.TotalMinutes, ($peak / 1GB), ($tmpPeak / 1GB), $log)
   if ($p.ExitCode -ne 0) { Get-Content "$log.err" -Tail 25; throw 'Process failed. See the log above.' }
 }
 
@@ -111,7 +120,10 @@ switch ($Step) {
   'Benchmark' {
     Need-Tool "$jdkHome\bin\java.exe" 'JDK'; $jar = Profile-Jar; if (-not $jar) { throw 'Profile jar missing. Run -Step Setup' }
     if ((Free-GB $Work) -lt 8 -and -not $Approve) { throw 'Less than 8 GB free: STOP (use -Approve to override).' }
-    Use-Jdk; Say "Benchmark: Bengaluru only ($BengaluruBounds) from the same PBF, heap ${HeapGB}g, $Threads threads, BelowNormal priority. Downloads Natural Earth / water polygon sources on first run."
+    Use-Jdk
+    $help = (& "$jdkHome\bin\java.exe" -jar $jar.FullName --help-all 2>&1 | Out-String)
+    Assert-Flags $help @('--osm-path', '--output', '--bounds', '--download', '--force', '--tmpdir', '--threads', '--storage', '--nodemap-storage') 'Benchmark'
+    Say "Benchmark: Bengaluru only ($BengaluruBounds) from the same PBF, heap ${HeapGB}g, $Threads threads, BelowNormal priority. Downloads Natural Earth / water polygon sources on first run."
     $a = @("-Xmx${HeapGB}g", '-jar', "`"$($jar.FullName)`"", "--osm-path=`"$Pbf`"", "--output=`"$bench`"", "--bounds=$BengaluruBounds", '--download', '--force', "--tmpdir=`"$dirTmp`"", "--threads=$Threads", '--storage=mmap', '--nodemap-storage=mmap')
     Run-Measured "$jdkHome\bin\java.exe" ($a -join ' ') 'benchmark.log'
     Say ("Benchmark archive: {0:N1} MB. Compare elapsed time and peak memory with your budget before running -Step Build." -f ((Get-Item $bench).Length / 1MB))
@@ -119,11 +131,13 @@ switch ($Step) {
 
   'Build' {
     Need-Tool "$jdkHome\bin\java.exe" 'JDK'; $jar = Profile-Jar; if (-not $jar) { throw 'Profile jar missing. Run -Step Setup' }
-    $need = 12; if ((Free-GB $Work) -lt $need -and -not $Approve) { throw "Less than $need GB free on the -Work drive: STOP. Request approval, free space, or use -Approve." }
+    if (-not (Test-Path (Join-Path $Work 'benchmark.log'))) { throw 'Run -Step Benchmark first and review its measured time, peak memory and temp usage.' }
+    if (-not $Approve) { throw 'The full build is NOT approved automatically (estimated 8 to 11 GB of temporary disk). Review the Benchmark numbers, then re-run with -Approve to confirm the resource budget.' }
+    $need = 12; if ((Free-GB $Work) -lt $need) { throw "Less than $need GB free on the -Work drive: STOP. Free space or choose another -Work drive." }
     Use-Jdk
-    $help = (& "$jdkHome\bin\java.exe" -jar $jar.FullName --help 2>&1 | Out-String)
-    $flags = @("-Xmx${HeapGB}g", '-jar', "`"$($jar.FullName)`"", "--osm-path=`"$Pbf`"", "--output=`"$archive`"", '--download', '--force', "--tmpdir=`"$dirTmp`"", "--threads=$Threads")
-    foreach ($opt in '--storage=mmap', '--nodemap-storage=mmap') { if ($help -match [regex]::Escape($opt.Split('=')[0])) { $flags += $opt } else { Write-Warning "This Planetiler build does not list $($opt.Split('=')[0]); omitted." } }
+    $help = (& "$jdkHome\bin\java.exe" -jar $jar.FullName --help-all 2>&1 | Out-String)
+    Assert-Flags $help @('--osm-path', '--output', '--download', '--force', '--tmpdir', '--threads', '--storage', '--nodemap-storage') 'Build'
+    $flags = @("-Xmx${HeapGB}g", '-jar', "`"$($jar.FullName)`"", "--osm-path=`"$Pbf`"", "--output=`"$archive`"", '--download', '--force', "--tmpdir=`"$dirTmp`"", "--threads=$Threads", '--storage=mmap', '--nodemap-storage=mmap')
     Say "Generating the regional archive. Heap ${HeapGB}g, $Threads threads. Expect tens of minutes; the laptop stays usable (BelowNormal priority)."
     Run-Measured "$jdkHome\bin\java.exe" ($flags -join ' ') 'build.log'
     $prov = [ordered]@{ built = (Get-Date -Format 'yyyy-MM-dd'); source_pbf = (Split-Path $Pbf -Leaf); source_bytes = (Get-Item $Pbf).Length; pbf_sha256 = (Get-FileHash $Pbf -Algorithm SHA256).Hash; archive_bytes = (Get-Item $archive).Length; profile = 'protomaps/basemaps (Planetiler)'; licence = 'ODbL 1.0, (c) OpenStreetMap contributors; Natural Earth public domain' }

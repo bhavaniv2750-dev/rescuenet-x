@@ -10,4 +10,4 @@ export * from './PageHeader';
 export * from './DataTable';
 export * from './MapFrame';
 export * from './DataNotice';
-export * from './ThemeSwitch';
+export * from './ThemeMenu';

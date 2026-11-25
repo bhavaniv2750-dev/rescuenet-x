@@ -1,5 +1,6 @@
-import { ThemeSwitch } from '../ui/ThemeSwitch';
 import React from 'react';
+import { X } from 'lucide-react';
+import { useDrawer } from '../../lib/useDrawer';
 import {
   LayoutDashboard, Layers, Activity, Bell, LifeBuoy, Users, Building2, FilePlus, Award, Bot, Database,
   Settings, Radio, Home, ClipboardList, Siren, UserCircle, ShieldCheck, ScrollText, Truck, Landmark,
@@ -25,11 +26,13 @@ const ICONS: Record<Page, React.ElementType> = {
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNavigate, isOpen, onClose, backendStatus, badges }) => {
+  const { drawer } = useDrawer(isOpen, onClose);
   return (
     <>
       {isOpen && <div className="sidebar-backdrop" onClick={onClose} />}
 
-      <aside className={`app-sidebar ${isOpen ? 'sidebar-open' : ''}`} aria-label="Main navigation">
+      <aside className={`app-sidebar ${isOpen ? 'sidebar-open' : ''}`} aria-label="Main navigation" ref={drawer as React.RefObject<HTMLElement>}>
+        <button type="button" className="sidebar-close" onClick={onClose} aria-label="Close navigation"><X size={18} aria-hidden="true" /></button>
         <div className="brand-section">
           <div className="brand-badge">
             <Radio size={20} className="pulse" />
@@ -74,7 +77,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ sections, activePage, onNaviga
         </div>
 
         <div className="sidebar-footer">
-          <ThemeSwitch className="theme-switch-sidebar" />
           <div className="status-connection-card">
             <div className="status-indicator">
               <span className={`status-dot ${backendStatus === 'Connected' ? 'dot-green' : 'dot-red'}`} />

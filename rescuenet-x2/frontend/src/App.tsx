@@ -125,12 +125,23 @@ function Shell() {
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
   }, [workspace]);
 
+  const freshSignIn = useRef(false);
+  const loginShown = useRef(false);   // true once the sign-in page was on screen (so a restored session is not treated as a fresh sign-in)
   // Resolve the address (initial load, back/forward, workspace change) against what the server offers.
   const resolveLocation = useCallback(() => {
     if (!workspace) return;
     const path = window.location.pathname.replace(/\/+$/, '') || '/';
     const page = pageForPath(workspace, path);
     if (page) { setActivePageState(page); setRouteProblem(null); return; }
+    // Friendly aliases for a namespace root (/public, /console, /public/home ...) lead to this workspace's start page.
+    // Right after signing in from a page of the other namespace (for example a guest on /public/flood-twin who then signs in to the console) the
+    // old address does not belong to the new workspace: land on its start page instead of an access error. Authorization is unchanged.
+    const alias = ['/public', '/public/home', '/console', '/console/home', '/index.html'].includes(path);
+    if (alias || (freshSignIn.current && path !== '/')) {
+      freshSignIn.current = false;
+      const home = homePageOf(workspace);
+      if (home) { setActivePageState(home); setRouteProblem(null); window.history.replaceState(null, '', pathForPage(workspace, home) || '/'); return; }
+    }
     if (path === '/' || path === '/index.html') {
       const home = homePageOf(workspace);
       if (home) {
@@ -150,7 +161,7 @@ function Shell() {
   // Signing in clears guest mode; signing out returns the address bar to the start page.
   const hadUser = useRef(false);
   useEffect(() => {
-    if (user) setGuestMode(false);
+    if (user) { setGuestMode(false); if (!hadUser.current && loginShown.current) freshSignIn.current = true; }
     if (!user && hadUser.current) { window.history.replaceState(null, '', '/'); setRouteProblem(null); }
     hadUser.current = Boolean(user);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -235,6 +246,7 @@ function Shell() {
   }
 
   if (!user && !guest) {
+    loginShown.current = true;
     return <LoginPage onContinueAsGuest={() => setGuestMode(true)}
       onReportEmergency={() => { window.history.replaceState(null, '', '/public/report'); setGuestMode(true); }} />;
   }
@@ -300,7 +312,7 @@ function Shell() {
             />
           )}
 
-          {activePage === 'Flood Forecasting' && <ForecastingView initialForecast={dashboardData?.forecast_preview} />}
+          {activePage === 'Flood Forecasting' && <ForecastingView initialForecast={dashboardData?.forecast_preview} showModelDetails={workspace?.experience === 'PROFESSIONAL'} />}
 
           {activePage === 'Emergency Alerts' && <AlertsView alerts={alerts} onRefresh={loadAllData} canManage={staff} isCommander={canApproveDispatch} />}
 
