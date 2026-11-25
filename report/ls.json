@@ -1,0 +1,297 @@
+{
+ "intro": [
+  "This chapter reviews nine recent publications on flood prediction, digital twins, remote sensing and data-driven early warning. For each work, the authors, publication, work carried out, methodology, merits and demerits are summarised. Section 2.10 compares the works with the proposed system and identifies the research gap."
+ ],
+ "papers": [
+  {
+   "n": 1,
+   "auth": "Heesang Eom, Younghun Kim, and Jongho Paik (2025) [1]",
+   "work": "A digital twin-based river management and flood prediction system is built for the rivers of Jeju Island, Korea, whose volcanic geology causes rapid runoff on steep slopes. A hybrid deep learning model predicts river flooding, and its output is shown on a 3D digital twin platform for real-time monitoring.",
+   "meth": [
+    "Combined a Convolutional Neural Network (CNN) for spatial feature extraction with an RNN using LSTM units for temporal sequence modelling.",
+    "Trained and tested the model on accumulated real river and rain-gauge data, and studied how added sensors improve prediction.",
+    "Integrated the predictions into a 3D digital twin visualisation platform for data-driven decisions."
+   ],
+   "mer": [
+    "The hybrid CNN-RNN model outperforms individual CNN and RNN baselines.",
+    "Reports a macro-average precision of 0.97, recall of 0.99 and F1-score of 0.98.",
+    "The 3D digital twin gives operators a clear real-time view of river conditions."
+   ],
+   "dem": [
+    "Designed for Jeju's volcanic hydrology, so performance in other basins is not shown.",
+    "A deep hybrid model needs long, dense sensor histories and more computing power.",
+    "Covers prediction and monitoring only; incident reporting, rescue allocation and human authorisation are not addressed."
+   ]
+  },
+  {
+   "n": 2,
+   "auth": "Naghmeh Shafiee Roudbari, Shubham Rajeev Punekar, Zachary Patterson, Ursula Eicker, and Charalambos Poullis (2024) [2]",
+   "work": "This study introduces LocalFLoodNet, a graph neural network with a graph learning module that captures how water systems and gauging stations are connected, to predict future water levels. A digital twin prototype of Terrebonne, Quebec (Greater Montreal Area) is also built to visualise predicted water levels and test preventive strategies.",
+   "meth": [
+    "Modelled multiple gauging stations as a graph, with a learning module that discovers the connections between them.",
+    "Predicted water levels for the following days at several stations using decades of historical data.",
+    "Built an interactive digital twin in the Unreal Engine where users can modify the landscape and simulate flood scenarios."
+   ],
+   "mer": [
+    "Captures the influence of upstream and neighbouring areas, which most single-station models ignore.",
+    "Turns forecasts into actionable visual insights for disaster prevention and policy-making.",
+    "Lets planners test preventive measures interactively before a flood occurs."
+   ],
+   "dem": [
+    "Needs long multi-station records, which are rarely available in data-scarce regions.",
+    "Game-engine visualisation requires substantial computing resources.",
+    "Does not handle distress reports, rescue team coordination or alert delivery."
+   ]
+  },
+  {
+   "n": 3,
+   "auth": "Ankush Manocha, Munish Bhatia, and Sandeep Kumar Sood (2025) [3]",
+   "work": "This framework combines digital twin simulation, IoT sensing, adaptive neuro-fuzzy learning and blockchain security to forecast floods and share flood information securely between agencies.",
+   "meth": [
+    "Collected precipitation, water level, water flow, humidity, temperature and seasonal data from distributed IoT sensors, aligning them with weighted interpolation.",
+    "Used a neuro-fuzzy model to compute a continuous Flood Index Value (FIV) that reflects the probability of flooding.",
+    "Recorded events, predictions and alerts on a blockchain using reputation-based Byzantine fault-tolerant consensus."
+   ],
+   "mer": [
+    "Reaches 97.23% training and 95.58% testing accuracy, with an R squared value of 0.90.",
+    "Outperforms conventional fuzzy logic systems and artificial neural networks under the same conditions.",
+    "The blockchain layer prevents tampering with disaster data shared between agencies."
+   ],
+   "dem": [
+    "Training combines real records with synthesised datasets, so real-world accuracy may differ.",
+    "Blockchain latency grows as the network gets larger.",
+    "Does not cover rescue resource allocation or human approval of dispatch decisions."
+   ]
+  },
+  {
+   "n": 4,
+   "auth": "Youcef Djenouri et al. (2025) [4]",
+   "work": "GTCDL is a framework that improves flood disaster prediction through dynamic consensus between several deep learning models. It addresses uneven data across disaster phases and the need for models to adapt to changing ground conditions.",
+   "meth": [
+    "Trained an ensemble of deep learning flood models and scored each model's contribution using Shapley values from game theory.",
+    "Selected models dynamically by matching real-time remote sensing observations with historical loss patterns and each model's current competence.",
+    "Validated the framework on Sentinel-1 SAR time series within a river basin digital twin."
+   ],
+   "mer": [
+    "Reports 92% AUC in damage forecasting, a 6% gain over static baselines.",
+    "Adapts to changing conditions instead of relying on one fixed model.",
+    "Handles the uneven availability of data across disaster phases."
+   ],
+   "dem": [
+    "Running and scoring an ensemble of deep models needs considerable computing power.",
+    "Depends on the availability and revisit time of satellite SAR imagery.",
+    "Focuses on prediction; ground-level incident handling and rescue coordination are not included."
+   ]
+  },
+  {
+   "n": 5,
+   "auth": "Se-jung Lim, K. Sakthidasan Sankaran, and Anandakumar Haldorai (2025) [5]",
+   "work": "This work develops a flood prediction and monitoring system that analyses remote sensing images, predicts flood occurrence, maps flood-susceptible areas and raises alerts that are visualised through digital twin technology.",
+   "meth": [
+    "Preprocessed remote sensing images using Frequency Ratio and a multicollinearity test, then extracted features with a deep convolutional VGGNet-16.",
+    "Selected optimal features with an Improved Harris Hawks Optimization algorithm and fused images with Flexible Spatio-Temporal Fusion (F-SPTF).",
+    "Classified normal and abnormal flood conditions with a deep cascaded RNN and evaluated it on data from 2021–2023."
+   ],
+   "mer": [
+    "Reports 99.89% accuracy, 99.37% precision, 99.82% recall and 99.74% F1-score.",
+    "Achieves lower error (RMSE 0.784, MAE 0.764, MAPE 0.102) than the compared models.",
+    "Produces flood susceptibility maps and alerts that can be visualised in a digital twin."
+   ],
+   "dem": [
+    "The multi-stage pipeline (feature extraction, optimisation and fusion) is complex and computationally heavy.",
+    "Near-perfect scores on a limited dataset need independent validation.",
+    "Alerts are not linked to rescue team allocation or human-authorised dispatch."
+   ]
+  },
+  {
+   "n": 6,
+   "auth": "L. M. C. Rápalo, Marcus Nóbrega Gomes Jr., and Eduardo M. Mendiondo (2024) [6]",
+   "work": "An open-source system couples a hydrodynamic model with satellite rainfall and weather prediction data, working as a near real-time digital twin and early warning system for high-resolution flood forecasting in data-scarce regions.",
+   "meth": [
+    "Used the HydroPol2D hydrologic-hydrodynamic model to simulate flood behaviour at basin scale.",
+    "Fed the model with satellite rainfall (PERSIANN PDIR-Now) and Global Forecast System (GFS) weather predictions.",
+    "Tested the system in Honduras during two consecutive hurricanes, Eta and Iota."
+   ],
+   "mer": [
+    "Brings hydrodynamic flood forecasting to developing regions that lack ground data.",
+    "Shows that satellite data coupled with a digital twin can keep flood forecasts up to date during extreme rainfall.",
+    "Being open-source makes it easy for other agencies to adopt and extend."
+   ],
+   "dem": [
+    "Hydrodynamic simulation at high resolution is computationally intensive.",
+    "Forecast quality depends on the accuracy of satellite rainfall estimates.",
+    "Ends at early warning; it does not manage incidents, volunteers or rescue dispatch."
+   ]
+  },
+  {
+   "n": 7,
+   "auth": "Thanh Huy Nguyen et al. (2025) [7]",
+   "work": "This proof-of-concept digital twin improves flood forecasting by assimilating satellite Earth observations, tested on the 2021 flood in the Alzette catchment, Luxembourg.",
+   "meth": [
+    "Used Sentinel-1 SAR flood probability maps as observations of flood extent.",
+    "Assimilated these observations into the flood model through a particle filter-based data assimilation process.",
+    "Produced daily flood depth forecasts at detailed spatial resolution up to 30 days ahead."
+   ],
+   "mer": [
+    "Data assimilation reduces prediction uncertainty compared with the model alone.",
+    "Gives spatially detailed flood depth forecasts over a long horizon.",
+    "Shows how freely available satellite data can keep a flood digital twin up to date."
+   ],
+   "dem": [
+    "Relies on the timing and availability of SAR satellite passes.",
+    "Particle filtering with a hydraulic model is computationally demanding.",
+    "A single-catchment proof of concept with no emergency response workflow."
+   ]
+  },
+  {
+   "n": 8,
+   "auth": "Mohammed Hlal et al. (2025) [8]",
+   "work": "This systematic review examines how digital twin technology is used in urban flood risk management, focusing on remote sensing applications and early warning systems.",
+   "meth": [
+    "Followed the PRISMA 2020 framework to search Scopus and Web of Science, retrieving 1,085 records.",
+    "Screened and deduplicated the records to 85 peer-reviewed studies published between 2018 and 2025.",
+    "Analysed how remote sensing, IoT sensors and machine learning support digital twins for flood risk."
+   ],
+   "mer": [
+    "Finds that satellite imagery and IoT sensors improve digital twin accuracy.",
+    "Reports case studies where digital twins reduced flood response times by up to 40%.",
+    "Recommends modular, AI-driven digital twin frameworks suited to resource-constrained regions."
+   ],
+   "dem": [
+    "A review only; it does not implement or test a system.",
+    "Identifies unresolved challenges in data interoperability and computational demand.",
+    "Gives limited coverage of rescue operations and human decision-making after an alert."
+   ]
+  },
+  {
+   "n": 9,
+   "auth": "Cynthia Zeng and Dimitris Bertsimas (2023) [9]",
+   "work": "A global, multi-year flood risk prediction model is built by combining text-based geographical data with tabular time-series data.",
+   "meth": [
+    "Combined text descriptions of locations with statistical time-series features in one multimodal model.",
+    "Generated text embeddings with a transfer-learned DistilBERT model.",
+    "Forecast flood events one to five years ahead in historically flooded locations."
+   ],
+   "mer": [
+    "Shows that combining text and statistical data beats using either one alone.",
+    "Reaches 75–77% ROC AUC for one- to five-year flood forecasts.",
+    "Presented as the first machine learning flood prediction model at global scale with a multi-year horizon."
+   ],
+   "dem": [
+    "Multi-year forecasts do not support short-term emergency operations.",
+    "Moderate accuracy compared with local, sensor-based models.",
+    "No real-time data, incident management or rescue coordination."
+   ]
+  }
+ ],
+ "refs": [
+  "[1] H. Eom, Y. Kim, and J. Paik, “Design and Performance Verification of Deep Learning-Based River Flood Prediction System Design and Digital Twin-Based Its Application,” Mathematics (MDPI), vol. 13, no. 11, Art. no. 1696, 2025.",
+  "[2] N. Shafiee Roudbari, S. R. Punekar, Z. Patterson, U. Eicker, and C. Poullis, “From Data to Action in Flood Forecasting Leveraging Graph Neural Networks and Digital Twin Visualization,” Scientific Reports, vol. 14, Art. no. 18571, 2024.",
+  "[3] A. Manocha, M. Bhatia, and S. K. Sood, “Digital Twin-Assisted Fuzzy Logic-Inspired Intelligent Approach for Flood Prediction,” IEEE Sensors Journal, vol. 25, no. 15, 2025.",
+  "[4] Y. Djenouri et al., “Game-Theoretic Consensus Deep Learning for Adaptive Flood Prediction in Digital Twin Environments,” IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing, vol. 18, 2025.",
+  "[5] S.-J. Lim, K. Sakthidasan Sankaran, and A. Haldorai, “A Novel Framework for Detecting Flood Disaster: Spatio-Temporal Fusion and Digital Twin Approach,” IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing, 2025.",
+  "[6] L. M. C. Rápalo, M. N. Gomes Jr., and E. M. Mendiondo, “Developing an Open-Source Flood Forecasting System Adapted to Data-Scarce Regions: A Digital Twin Coupled with Hydrologic-Hydrodynamic Simulations,” Journal of Hydrology, vol. 644, Art. no. 131929, 2024.",
+  "[7] T. H. Nguyen et al., “Towards Digital Twin in Flood Forecasting with Data Assimilation Satellite Earth Observations – A Proof-of-Concept in the Alzette Catchment,” arXiv preprint 2505.08553, 2025.",
+  "[8] M. Hlal et al., “Digital Twin Technology for Urban Flood Risk Management: A Systematic Review of Remote Sensing Applications and Early Warning Systems,” Remote Sensing (MDPI), vol. 17, no. 17, Art. no. 3104, 2025.",
+  "[9] C. Zeng and D. Bertsimas, “Global Flood Prediction: A Multimodal Machine Learning Approach,” arXiv preprint 2301.12548, 2023.",
+  "[10] Central Water Commission, Hydrological Data Directorate: Flood Forecasting Network in Karnataka River Basins, Ministry of Jal Shakti, Government of India, 2023."
+ ],
+ "tbl": [
+  [
+   "Study",
+   "Core Model",
+   "Forecasting Scope",
+   "Off-Grid SOS",
+   "Triage Logic",
+   "Safety Gate"
+  ],
+  [
+   "Eom et al. (2025)",
+   "CNN-LSTM with 3D twin",
+   "River flood level",
+   "No",
+   "None",
+   "Manual"
+  ],
+  [
+   "Roudbari et al. (2024)",
+   "GNN with 3D twin",
+   "Next-day water levels",
+   "No",
+   "None",
+   "Manual"
+  ],
+  [
+   "Manocha et al. (2025)",
+   "Neuro-fuzzy with IoT",
+   "Flood Index Value",
+   "No",
+   "None",
+   "Manual"
+  ],
+  [
+   "Djenouri et al. (2025)",
+   "DL ensemble (Shapley)",
+   "Damage forecast (SAR)",
+   "No",
+   "None",
+   "Manual"
+  ],
+  [
+   "Lim et al. (2025)",
+   "VGG16 with RNN",
+   "Flood maps",
+   "No",
+   "Alerts only",
+   "Manual"
+  ],
+  [
+   "Rápalo et al. (2024)",
+   "Hydraulic twin",
+   "High-res forecast",
+   "No",
+   "Early warning",
+   "Manual"
+  ],
+  [
+   "Nguyen et al. (2025)",
+   "Particle filter with SAR",
+   "Depth, up to 30 days",
+   "No",
+   "None",
+   "Manual"
+  ],
+  [
+   "Hlal et al. (2025)",
+   "Review (85 studies)",
+   "Review",
+   "No",
+   "Review",
+   "Review"
+  ],
+  [
+   "Zeng et al. (2023)",
+   "DistilBERT with tables",
+   "1–5 year risk",
+   "No",
+   "None",
+   "Not covered"
+  ],
+  [
+   "Rescue Net X 2.0 (Ours)",
+   "Forest, twin and agents",
+   "30, 45 and 60-minute outlooks",
+   "Yes (LoRa)",
+   "Ollama agents (advisory)",
+   "Commander gatekeeper"
+  ]
+ ],
+ "gap": [
+  "2.10 Comparative Analysis and Research Gap",
+  "Table 2.1 compares the reviewed works with Rescue Net X 2.0 on their core model, forecasting scope, support for off-grid SOS, triage logic and safety gate.",
+  "Table 2.1: Comparative Matrix of Existing Literature and Rescue Net X 2.0",
+  "The nine reviewed works advance flood prediction through deep learning, graph networks, neuro-fuzzy models, satellite data assimilation and digital twin visualisation, but they stop at prediction, mapping or early warning. None of them combines short-horizon local risk outlooks with off-grid LoRa SOS intake, verified incident and volunteer workflows, tracked geo-targeted alerts, and local LLM multi-agent triage under a deterministic human authorisation gate. This is the gap this project addresses.",
+  "CHAPTER 3",
+  "SYSTEM REQUIREMENT SPECIFICATION"
+ ]
+}
