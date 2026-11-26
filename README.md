@@ -1,142 +1,511 @@
 # Flood Digital Twin + RescueNet X 2.0
 
-Flood risk mapping and rescue coordination for Bengaluru and Karnataka.
-Dr. ACS College of Engineering, Dept. of CSE (Data Science), VTU.
+A flood-risk monitoring and emergency response platform that combines **flood prediction, geospatial mapping, citizen reports, AI-assisted image analysis, LoRa SOS simulation, incident management, rescue coordination, and emergency alerts**.
 
-The system helps a rescue control room go from **warning** to **dispatch**: it shows flood risk on a map,
-takes reports from citizens and from LoRa SOS beacons, checks photos with AI, suggests which team to send,
-and makes a human commander approve the dispatch.
+The system supports the workflow from **flood-risk assessment → incident verification → rescue triage → commander approval → dispatch → resolution**.
 
-## What it is, and what it is not
+---
 
-| It does | It does not |
-|---|---|
-| Predicts flood risk from rainfall, humidity and temperature (97.5% cross-validated accuracy, see [model evaluation](docs/model_evaluation.md)) | Read live river gauges or weather stations. There is no live sensor feed; data is refreshed from the database every 15 seconds |
-| Locates LoRa SOS packets, from GPS or by trilateration from 3 or more gateways | Talk to real LoRa hardware. Beacons and packets in the sample data are simulated |
-| Detects floods in photos (99.3% of the 809 project photos; 7.3% false alarms on 300 non-flood scenes, see [vision evaluation](docs/vision_evaluation.md)) | Measure water depth from a photo. The reporter chooses the depth |
-| Shows warnings in the app and exports each one as CAP 1.2 XML | Send SMS, e-mail or push messages |
-| Suggests a team with a local LLM (Ollama) and falls back to rules when it is offline | Dispatch anything without a commander's approval when 5 or more people are affected, or severity is HIGH or CRITICAL |
+## 🚨 Key Features
 
-Every record carries a data label: **OBSERVED** (entered by a person or device), **PREDICTED** (model output) or
-**SIMULATED** (sample data shipped with the project). Sample incidents, beacons, alerts and some facilities are SIMULATED.
+- **Flood Risk Prediction**
+  - Random Forest-based flood-risk classification.
+  - Uses rainfall, humidity, and temperature.
+  - Hold-out evaluation: **97.0%**
+  - Cross-validation accuracy: **97.5%**
+  - Water level is handled separately through gauge-based rules.
 
-## Quick start
+- **Flood Digital Twin**
+  - Geospatial flood-risk visualization.
+  - Catchment and flood-related spatial datasets.
+  - Supports observed, predicted, historical, and simulated data.
 
-You need Python 3.10 or newer (tested on 3.13) and Node.js 20.19 or newer (tested on 22).
+- **AI Flood Photo Analysis**
+  - Analyses submitted photographs for possible flooding.
+  - Detection accuracy: **99.3%**
+  - False-alarm rate: **7.3%**
+  - Used as decision support during incident verification.
 
-**1. Backend**
+- **LoRa SOS Simulation**
+  - Simulates emergency SOS packets.
+  - Supports GPS-based locations and gateway trilateration.
+  - Physical LoRa hardware is not required for the current setup.
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+- **Incident & Rescue Management**
+  - Tracks incidents through a controlled lifecycle.
+  - Supports verification, triage, approval, dispatch, tracking, and resolution.
+  - Human approval is required for high-risk and larger incidents.
+
+- **Emergency Alerts**
+  - CAP 1.2-compatible alert generation.
+  - Duplicate detection.
+  - Severity-based escalation.
+  - Commander/admin acknowledgement.
+
+- **Local AI Supervisor**
+  - Supports Ollama for local AI assistance.
+  - Includes a rule-based fallback when Ollama is unavailable.
+
+- **Role-Based Access**
+  - Citizen
+  - Volunteer
+  - Operator
+  - Commander
+  - Rescue Officer
+  - Admin
+
+---
+
+## 🔄 Incident Workflow
+
+```text
+REPORTED
+   ↓
+UNDER_VERIFICATION
+   ↓
+VERIFIED
+   ↓
+QUEUED
+   ↓
+TRIAGE_IN_PROGRESS
+   ↓
+PENDING_APPROVAL
+   ↓
+DISPATCHED
+   ↓
+IN_TRANSIT
+   ↓
+ON_SCENE
+   ↓
+RESOLVED
 ```
 
-The first start creates `backend/rescuenet.db`, loads the sample data and the demo accounts.
-API documentation: <http://127.0.0.1:8000/docs>. Health check: <http://127.0.0.1:8000/api/health>.
+Additional outcomes:
 
-**2. Frontend** (second terminal)
+```text
+DUPLICATE
+REJECTED
+CANCELLED
+```
+
+Commander approval is required when:
+
+- The incident involves **5 or more people**, or
+- The severity is **HIGH** or **CRITICAL**.
+
+Invalid incident state transitions are rejected by the API.
+
+---
+
+## 📊 Flood Prediction
+
+The flood-risk model uses:
+
+- Rainfall
+- Humidity
+- Temperature
+
+Current evaluation:
+
+| Metric | Result |
+|---|---:|
+| Hold-out evaluation | **97.0%** |
+| Cross-validation | **97.5%** |
+
+The model is intended for **risk classification**, not precise long-range flood forecasting.
+
+Water level is handled separately through gauge-based warning and danger rules rather than being used as an ML input.
+
+---
+
+## 📷 AI Flood Photo Analysis
+
+The image-analysis module provides an additional verification signal for citizen-submitted photographs.
+
+Current evaluation:
+
+| Metric | Result |
+|---|---:|
+| Flood detection | **99.3%** |
+| False alarms | **7.3%** |
+
+The system does **not** determine exact water depth from a photograph. Reported depth is provided separately by the incident reporter where required.
+
+AI results are treated as decision support rather than automatic emergency decisions.
+
+---
+
+## 📡 LoRa SOS
+
+The current LoRa functionality is a **simulation**.
+
+Simulated SOS packets can include:
+
+- SOS/device information
+- GPS coordinates
+- Gateway information
+- Signal-related information
+- Estimated position through trilateration
+
+The current implementation does not require physical LoRa hardware.
+
+---
+
+## 📢 Emergency Alerts
+
+The alert system supports **CAP 1.2-compatible XML**.
+
+Features include:
+
+- Severity classification
+- Duplicate detection
+- Escalation rules
+- Commander/admin acknowledgement
+- CAP XML generation
+
+CAP endpoint:
+
+```text
+GET /api/alerts/{id}/cap
+```
+
+Current escalation timings:
+
+| Severity | Escalation |
+|---|---:|
+| CRITICAL | 10 minutes |
+| HIGH | 20 minutes |
+| WARNING | 60 minutes |
+
+---
+
+## 🏷️ Data Labels
+
+The platform distinguishes between different sources of information:
+
+```text
+OBSERVED
+PREDICTED
+HISTORICAL
+SIMULATED
+```
+
+This helps distinguish real observations from model-generated and simulated data.
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+
+- Python
+- FastAPI
+- SQLite
+- SQLAlchemy
+- Pydantic
+- Scikit-learn
+- PyTorch / computer-vision components
+- Ollama
+
+### Frontend
+
+- React
+- TypeScript
+- Vite
+- npm
+
+### Data & Geospatial
+
+- CSV datasets
+- Shapefiles
+- GeoJSON/geospatial data
+- Catchment datasets
+- Flood-risk datasets
+
+### Emergency Communication
+
+- LoRa SOS simulation
+- CAP 1.2 alerts
+
+---
+
+## 📁 Project Structure
+
+```text
+rescuenet-x/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   ├── db/
+│   │   ├── ml/
+│   │   ├── services/
+│   │   └── ...
+│   │
+│   ├── scripts/
+│   ├── tests/
+│   └── .env.example
+│
+├── rescuenet-x2/
+│   └── frontend/
+│
+├── datasets/
+│   └── ...
+│
+├── catchments_shapefiles_indofloods imag/
+│   └── ...
+│
+├── docs/
+│   └── ...
+│
+├── .gitignore
+├── CONTRIBUTING.md
+└── README.md
+```
+
+---
+
+## ⚡ Quick Start
+
+### Requirements
+
+- Python **3.10+**
+- Node.js **20.19+**
+- npm
+- Git
+
+### 1. Clone the repository
 
 ```bash
+git clone https://github.com/bhavaniv2750-dev/rescuenet-x.git
+cd rescuenet-x
+```
+
+### 2. Backend
+
+```powershell
+cd backend
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+```
+
+Create the local environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Start the backend:
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+### 3. Frontend
+
+Open another terminal:
+
+```powershell
 cd rescuenet-x2/frontend
+
 npm ci
 npm run dev
 ```
 
-Open <http://localhost:5173>.
+The frontend URL will be displayed by Vite in the terminal.
 
-**3. Optional extras**
+---
 
-```bash
-# flood photo models (about 105 MB). They also download on first use.
-python scripts/download_vision_model.py       # run from backend/
+## ⚙️ Configuration
 
-# local AI supervisor. Without it, triage uses the rule-based fallback.
-ollama pull qwen3:4b-instruct
+Local configuration is stored in:
+
+```text
+backend/.env
 ```
 
-Copy `.env.example` to `backend/.env` to change settings.
+The repository provides:
 
-## Sign-in portals and roles
-
-The sign-in page has three portals. An account can only sign in through its own portal.
-
-| Portal | Role | Can do |
-|---|---|---|
-| **Citizens & Volunteers** (self sign-up) | Citizen | See warnings, shelters, forecasts; report an emergency; follow their own reports |
-| | Volunteer | Same as citizen. Must be **verified** by staff before being assigned to a rescue |
-| **Rescue Department** (created by an admin) | Operator | Run the control room: verify and dispatch incidents, run AI triage, issue alerts, manage volunteers and facilities |
-| | Commander | Everything an operator does, plus **approve or decline dispatches**, acknowledge alerts, read the audit log |
-| | Rescue officer | See their team's missions and report progress (en route, on scene, resolved) |
-| **Admin & Developers** | Admin | Everything above, plus accounts, system diagnostics, settings, deleting incidents |
-
-Visitors can also continue **without signing in** to read warnings and shelters or report an emergency.
-
-**Demo accounts** (created while `SEED_DEMO_USERS=true`, password `Rescue@2026`):
-`citizen`, `volunteer`, `operator`, `officer`, `commander`, `admin`. The sign-in page shows shortcut buttons for them.
-**Turn demo mode off and remove these accounts before any real use.** With demo mode off, a single admin is created with
-`RESCUENET_ADMIN_PASSWORD`, or a random password printed once and saved to `backend/.admin_password`.
-
-Passwords are hashed with PBKDF2-SHA256, sessions use signed tokens, and an account locks for 5 minutes after 5 wrong passwords.
-
-## How an incident moves
-
-```
-REPORTED -> UNDER_VERIFICATION -> VERIFIED -> QUEUED -> TRIAGE_IN_PROGRESS
-         -> PENDING_APPROVAL -> DISPATCHED -> IN_TRANSIT -> ON_SCENE -> RESOLVED
+```text
+backend/.env.example
 ```
 
-Side exits: `DUPLICATE`, `REJECTED` (can be re-queued), `CANCELLED`. Invalid jumps are refused.
-Incidents that need approval (5 or more people, or HIGH or CRITICAL) reach `DISPATCHED` only through a commander's approval of the
-supervisor task. The LLM can suggest, but a fixed rule decides whether approval is needed. Every state change,
-approval, alert and account action is recorded in the audit log.
+Use `.env.example` as the template for local configuration.
 
-## Alerts
+Typical configuration includes:
 
-Alerts are shown in the app and exported as CAP 1.2 XML (`GET /api/alerts/{id}/cap`). A new alert that duplicates one already in force
-(same title, or same severity within 1 km in the last 30 minutes) is refused. An unacknowledged CRITICAL, HIGH or WARNING alert is
-flagged for escalation after 10, 20 or 60 minutes. Only a commander's or administrator's acknowledgement changes an alert's status; other people
-add to a "seen by" count.
+```text
+DATABASE_URL
+SECRET_KEY
+RESCUENET_ADMIN_PASSWORD
+SEED_DEMO_USERS
+VITE_API_BASE_URL
+```
 
-## Tests
+**Never commit real passwords, API keys, tokens, or other secrets.**
 
-```bash
+The `.env` file is intentionally ignored by Git.
+
+---
+
+## 👤 Demo Accounts
+
+Demo accounts can be enabled for local development/testing with:
+
+```text
+SEED_DEMO_USERS=true
+```
+
+Supported roles include:
+
+```text
+Citizen
+Volunteer
+Operator
+Commander
+Rescue Officer
+Admin
+```
+
+Demo credentials should only be used for development/testing.
+
+Before any real deployment:
+
+- Disable demo-user seeding.
+- Change default credentials.
+- Configure secure secrets.
+- Use appropriate production authentication and secret management.
+
+---
+
+## 🧪 Testing
+
+The project includes automated backend and frontend tests.
+
+Run backend tests:
+
+```powershell
 cd backend
-python -m pytest -q
+pytest
 ```
 
-68 tests pass; 1 more is skipped unless Ollama is running, and 3 more are skipped until the photo models are downloaded.
-Measure the models yourself with `scripts/evaluate_vision.py` and by retraining (`FloodModelService.train_model`).
+Run the frontend test command configured in `package.json`.
 
-## Project layout
+Tests cover areas including:
 
+- API behaviour
+- Authentication
+- Incident workflows
+- Alert handling
+- ML-related functionality
+- Frontend behaviour
+
+---
+
+## 🗺️ Geospatial Data
+
+The project contains flood and catchment-related geospatial datasets.
+
+Shapefiles normally consist of multiple companion files, for example:
+
+```text
+.shp
+.shx
+.dbf
+.prj
 ```
-backend/
-  app/api/routes/     FastAPI routes (auth, incidents, agents, teams, volunteers, alerts, facilities, vision, ...)
-  app/services/       lifecycle, audit, alerting (CAP), trilateration, vision, Ollama supervisor
-  app/ml/             flood model and its saved evaluation
-  app/db/             tables, migration, sample data, beacon registry
-  scripts/            model download, evaluation, prompt encoding
-  tests/
-rescuenet-x2/frontend/ React 19 + TypeScript + Vite, Leaflet maps
-docs/                 model_evaluation.md, vision_evaluation.md and earlier design notes
-flood/, "Flood Prediction Dataset"/, "flood pred detc rescue net clean dataset"/, ...  datasets
+
+Keep shapefile companion files together.
+
+**Do not rename, move, or partially delete tracked shapefile data without checking the application's dataset references.**
+
+---
+
+## ⚠️ Known Limitations
+
+This project is a development and decision-support platform and is **not a replacement for official emergency-management infrastructure**.
+
+Current limitations include:
+
+- Flood projections are heuristic and should not be treated as authoritative forecasts.
+- The current flood model does not provide reliable long-range forecasting.
+- Water-level warnings depend on available gauge information.
+- LoRa communication is currently simulated.
+- Photo analysis can produce false positives and false negatives.
+- Difficult visual conditions may reduce image-analysis performance.
+- Exact water depth cannot be determined directly from photographs.
+- The local AI supervisor depends on Ollama when available and uses deterministic rules as fallback.
+- SQLite is suitable for development and smaller deployments but may need replacement for large-scale production.
+- Development configurations may use localhost services and development CORS settings.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome.
+
+Recommended workflow:
+
+```text
+Create branch
+     ↓
+Make changes
+     ↓
+Run tests
+     ↓
+Review changes
+     ↓
+Commit
+     ↓
+Open Pull Request
 ```
 
-The other files in `docs/` (PRD, architecture, tasks) are earlier design notes and may be out of date. This README and the two
-evaluation files describe the current system.
+Before submitting a pull request:
 
-## Known limitations
+- Keep changes focused.
+- Run relevant tests.
+- Do not commit `.env` or other secrets.
+- Do not unnecessarily modify datasets.
+- Keep shapefile companion files together.
+- Update documentation when changing ML behaviour or evaluation.
+- Do not tune models using the test set.
+- Review security-sensitive changes carefully.
 
-- The flood model cannot forecast ahead on this dataset (next-hour accuracy is close to chance because the rows are nearly independent hours), so the +30, +45 and +60 minute values are a runoff formula, not machine learning. It was trained on data from one station.
-- River gauge stations carry warning and danger levels only, not current readings.
-- `clean_rescuenet_sos_data.csv` has Mumbai coordinates, so it is kept for reference only; the Bengaluru beacons are simulated.
-- Photo analysis uses pretrained models that were not fine-tuned on flood photos. Muddy water can be under-counted and some street and canal scenes cause false alarms.
-- SQLite is meant for one server. Use a client-server database for anything larger.
-- `DEBUG=True` and open CORS for localhost are development settings.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 
-## License
+---
 
-No license has been selected yet. Add one before redistributing the project.
+## 🔒 Security
+
+Never commit:
+
+```text
+.env
+API keys
+Passwords
+Tokens
+Private credentials
+Production secrets
+```
+
+If a secret is accidentally committed, revoke or rotate it immediately and remove the exposed secret from the repository history as appropriate.
+
+---
+
+## 📄 License
+
+No open-source license has been selected for this repository yet.
+
+Until a license is added, the source code should not be assumed to be freely reusable, modified, or redistributed.
+
+---
+
+## 🚧 Project Status
+
+**Active development**
+
+Flood Digital Twin + RescueNet X 2.0 currently integrates flood-risk analysis, geospatial visualization, citizen reporting, AI-assisted photo verification, SOS simulation, emergency alerts, incident management, and rescue coordination into a single platform.
